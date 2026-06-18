@@ -793,9 +793,32 @@ function buildPositions(rows) {
   const realized = []; // each sell's realized P&L
 
   for (const r of sorted) {
-    if (!['BUY','SELL'].includes(r.cat)) continue;
+    if (!['BUY','SELL','COMMISSION','TOBIN'].includes(r.cat)) continue;
     // Normalize ticker aliases (e.g. USOPA → US after corporate rename)
     const t = TICKER_ALIASES[r.ticker] || r.ticker; if (!t) continue;
+
+    // ── COMMISSION / TOBIN: includili nel costo base ──────────────────────
+    // In Directa le commissioni sono righe SEPARATE dal BUY/SELL.
+    // - Se la posizione è ancora aperta (commissione su acquisto):
+    //     aggiungiamo al totalCost → aumenta prezzo medio → riduce P&L
+    // - Se la posizione è chiusa (commissione su vendita):
+    //     sottraiamo dal P&L dell'ultima vendita registrata
+    if (r.cat === 'COMMISSION' || r.cat === 'TOBIN') {
+      const fee = Math.abs(r.amount);
+      if (!fee) continue;
+      if (live[t] && live[t].shares > 0.01) {
+        live[t].totalCost    += fee;
+        if (hist[t]) hist[t].totalCostAll += fee;
+      } else {
+        // Commissione su vendita: riduce il P&L dell'ultima vendita di questo ticker
+        for (let i = realized.length - 1; i >= 0; i--) {
+          if (realized[i].ticker === t) { realized[i].pl -= fee; break; }
+        }
+      }
+      continue;
+    }
+
+    // ── BUY / SELL ────────────────────────────────────────────────────────
     const m = TMETA[t] || {};
     const meta = {
       ticker: t,
@@ -1044,21 +1067,18 @@ function updateDynCharts() {
 
 function fmt(n,d=2){return n.toLocaleString('it-IT',{minimumFractionDigits:d,maximumFractionDigits:d})}
 
-// Legge la colonna Saldo del CSV — è il saldo cassa esatto di Directa.
-// Per "tutto": saldo dell'ultima riga cronologicamente (= liquidità oggi).
-// Per anno Y: saldo dell'ultima riga entro il 31/12/Y.
+// Saldo cassa = somma di tutti i flussi fino alla data limite.
+// Nel CSV Directa ogni riga è un movimento cassa con segno corretto:
+//   DEPOSIT/SELL/DIVIDEND/ETF_INCOME/COUPON → positivi
+//   BUY/COMMISSION/TOBIN/TAX/WITHDRAW       → negativi
+// NB: le commissioni d'acquisto sono RIGHE SEPARATE (non embedded nel BUY).
 function computeLiquidita(year) {
   const rows = G.rows || [];
+  if (!rows.length) return null;
   const cutYear = year === 'tutto' ? Infinity : Number(year);
-  // Filtra righe con saldo valido e entro la data limite
-  const candidates = rows.filter(r =>
-    r.saldo != null && !isNaN(r.saldo) && r.date &&
-    r.date.getFullYear() <= cutYear
-  );
-  if (!candidates.length) return null;
-  // Prende la riga con la data più recente (saldo finale del periodo)
-  const latest = candidates.reduce((max, r) => r.date >= max.date ? r : max, candidates[0]);
-  return latest.saldo;
+  return rows
+    .filter(r => r.date && r.date.getFullYear() <= cutYear)
+    .reduce((s, r) => s + r.amount, 0);
 }
 
 function updateKPIs() {
