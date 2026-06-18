@@ -234,10 +234,6 @@ tbody tr:hover{background:#1e2540}
   </div>
   <div class="header-right">
     <button class="reload-btn" onclick="document.getElementById('uploadZone').style.display='flex';document.getElementById('dashboard').style.display='none'">↩ Cambia CSV</button>
-    <div class="live-badge">
-      <div class="dot" id="liveDot" style="background:#718096"></div>
-      <span id="liveStatus">Aggiornamento prezzi...</span>
-    </div>
   </div>
 </div>
 
@@ -340,7 +336,13 @@ tbody tr:hover{background:#1e2540}
   <div class="card">
     <div class="card-header">
       <h3>📡 Portafoglio Live — Prezzi Correnti & Capital Gain</h3>
-      <button class="refresh-btn" onclick="fetchPrices()">↻ Aggiorna</button>
+      <div style="display:flex;align-items:center;gap:8px">
+        <div class="live-badge">
+          <div class="dot" id="liveDot" style="background:#718096"></div>
+          <span id="liveStatus">—</span>
+        </div>
+        <button class="refresh-btn" onclick="fetchPrices()">↻ Aggiorna</button>
+      </div>
     </div>
     <div id="errorBox"></div>
     <div class="table-search-wrap">
