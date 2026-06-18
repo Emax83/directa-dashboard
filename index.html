@@ -294,6 +294,29 @@ tbody tr:hover{background:#1e2540}
     </div>
   </div>
 
+  <!-- PLUSVALENZE / MINUSVALENZE -->
+  <div class="card" id="realizedCard" style="display:none">
+    <h3 class="section-title">📉 Plusvalenze &amp; Minusvalenze Realizzate</h3>
+    <p style="font-size:0.75rem;color:#4a5568;margin-bottom:14px">
+      Calcolate su ogni vendita: <strong style="color:#718096">ricavo − (prezzo medio carico × quantità venduta)</strong>.
+      Importi lordi pre-ritenuta. In regime di risparmio amministrato (Directa), le minusvalenze sono compensabili con plusvalenze future entro 4 anni.
+    </p>
+    <div style="overflow-x:auto">
+      <table>
+        <thead>
+          <tr>
+            <th>Anno</th>
+            <th style="text-align:right">Plusvalenze</th>
+            <th style="text-align:right">Minusvalenze</th>
+            <th style="text-align:right">Netto</th>
+            <th style="text-align:right">Operazioni</th>
+          </tr>
+        </thead>
+        <tbody id="realizedTable"></tbody>
+      </table>
+    </div>
+  </div>
+
 </div><!-- /container -->
 </div><!-- /dashboard -->
 
@@ -522,35 +545,88 @@ function parseCSV(text) {
 // DATA COMPUTATION
 // ════════════════════════════════════════════════
 function buildPositions(rows) {
-  // Sort ascending by date — CSV is newest-first; sells must come after buys chronologically
+  // Sort ascending — CSV is newest-first; sells must come after buys chronologically
   const sorted = [...rows].sort((a, b) => a.date - b.date);
-  const pos = {};
+
+  const live  = {};   // current avg-cost tracking
+  const hist  = {};   // all-time per-ticker totals (for closed positions display)
+  const realized = []; // each sell's realized P&L
+
   for (const r of sorted) {
     if (!['BUY','SELL'].includes(r.cat)) continue;
     const t = r.ticker; if (!t) continue;
     const m = TMETA[t] || {};
+    const meta = {
+      ticker: t,
+      desc: m.desc || r.desc || t,
+      isin: r.isin,
+      type: m.t || guessType(t, r.isin, r.desc),
+      yahoo: m.y !== undefined ? m.y : null,
+      sector: m.s || 'Altro',
+      geo: m.g || 'Altro',
+    };
+
+    if (!hist[t]) hist[t] = {...meta, boughtQty:0, totalCostAll:0, soldQty:0, totalProceeds:0};
+
     if (r.cat === 'BUY') {
-      if (!pos[t]) pos[t] = {ticker:t, shares:0, totalCost:0,
-        desc: m.desc || r.desc || t,
-        isin: r.isin,
-        type: m.t || guessType(t, r.isin, r.desc),
-        yahoo: m.y !== undefined ? m.y : null,
-        sector: m.s || 'Altro',
-        geo: m.g || 'Altro'
-      };
-      pos[t].shares    += r.qty;
-      pos[t].totalCost += Math.abs(r.amount);
-    } else if (pos[t] && pos[t].shares > 0) {
-      const avgC = pos[t].totalCost / pos[t].shares;
-      pos[t].shares    -= r.qty;
-      pos[t].totalCost -= avgC * r.qty;
-      if (pos[t].shares < 0.01) delete pos[t];
+      if (!live[t]) live[t] = {...meta, shares:0, totalCost:0};
+      live[t].shares    += r.qty;
+      live[t].totalCost += Math.abs(r.amount);
+      hist[t].boughtQty    += r.qty;
+      hist[t].totalCostAll += Math.abs(r.amount);
+    } else {
+      if (!live[t] || live[t].shares < 0.01) continue;
+      const avgC      = live[t].totalCost / live[t].shares;
+      const costBasis = avgC * r.qty;
+      const proceeds  = r.amount; // positive for sells in Directa CSV
+      const pl        = proceeds - costBasis;
+
+      live[t].shares    -= r.qty;
+      live[t].totalCost -= costBasis;
+      hist[t].soldQty      += r.qty;
+      hist[t].totalProceeds += proceeds;
+
+      realized.push({date:r.date, year:r.date.getFullYear(), ticker:t, pl, proceeds, costBasis, qty:r.qty});
+
+      if (live[t].shares < 0.01) { live[t].shares = 0; live[t].totalCost = 0; }
     }
   }
-  return Object.values(pos)
+
+  const TYPE_ORDER = {Azione:0, ETF:1, 'Certif.':2};
+  const typeSort = (a,b) => (TYPE_ORDER[a.type]||3) - (TYPE_ORDER[b.type]||3);
+
+  // Open positions
+  const open = Object.values(live)
     .filter(p => p.shares >= 0.01)
     .map(p => ({...p, avgCost: p.totalCost / p.shares}))
-    .sort((a,b) => ({Azione:0,ETF:1,'Certif.':2}[a.type]||3) - ({Azione:0,ETF:1,'Certif.':2}[b.type]||3));
+    .sort(typeSort);
+
+  // Closed positions (fully sold)
+  const openTickers = new Set(open.map(p => p.ticker));
+  const closed = Object.values(hist)
+    .filter(h => !openTickers.has(h.ticker) && h.soldQty > 0)
+    .map(h => ({
+      ...h,
+      avgBuyPrice:   h.totalCostAll   / h.boughtQty,
+      avgSellPrice:  h.soldQty > 0 ? h.totalProceeds / h.soldQty : 0,
+      realizedPL:    h.totalProceeds  - h.totalCostAll,
+      realizedPLpct: h.totalCostAll > 0 ? ((h.totalProceeds - h.totalCostAll) / h.totalCostAll) * 100 : 0,
+    }))
+    .sort(typeSort);
+
+  return {open, closed, realized};
+}
+
+function buildRealizedByYear(realized) {
+  const yr = {};
+  for (const r of realized) {
+    const y = r.year;
+    if (!yr[y]) yr[y] = {year:y, plusv:0, minusv:0, count:0};
+    if (r.pl >= 0) yr[y].plusv  += r.pl;
+    else           yr[y].minusv += Math.abs(r.pl);
+    yr[y].count++;
+  }
+  return Object.values(yr).sort((a,b) => a.year - b.year);
 }
 
 function buildMonthly(rows) {
@@ -966,7 +1042,10 @@ async function fetchPrices() {
 
 function renderTable(pm) {
   const positions = G.positions || [];
+  const closed    = G.closedPositions || [];
   let totalCost=0, totalMkt=0, rows='';
+
+  // ── Open positions ──
   for (const pos of positions) {
     const q  = pos.yahoo ? pm[pos.yahoo] : null;
     const lp = q?.regularMarketPrice ?? null;
@@ -994,21 +1073,52 @@ function renderTable(pm) {
       <td style="width:75px"><div class="gain-bar"><div class="bar-bg"><div class="bar-fill" style="width:${pp!=null?Math.min(Math.abs(pp),100):0}%;background:${bc}"></div></div><span style="font-size:.68rem;color:${bc}">${pp!=null?(pp>=0?'+':'')+fmt(pp,1)+'%':'—'}</span></div></td>
     </tr>`;
   }
-  const tpl=totalMkt-totalCost, tpp=(tpl/totalCost)*100;
+
+  // ── Totale posizioni aperte ──
+  const tpl=totalMkt-totalCost, tpp=totalCost>0?(tpl/totalCost)*100:0;
   rows += `<tr class="total-row">
-    <td colspan="3"><strong>TOTALE</strong></td><td></td>
+    <td colspan="3"><strong>TOTALE APERTE</strong></td><td></td>
     <td style="text-align:right"><strong>€${fmt(totalCost)}</strong></td><td></td>
     <td style="text-align:right"><strong class="teal">€${fmt(totalMkt)}</strong></td>
     <td style="text-align:right"><span class="${tpl>=0?'green':'red'}">${tpl>=0?'+':'-'}€${fmt(Math.abs(tpl))}</span></td>
     <td style="text-align:right"><span class="${tpp>=0?'green':'red'}">${tpp>=0?'+':''}${fmt(tpp)}%</span></td><td></td>
   </tr>`;
+
+  // ── Separator ──
+  if (closed.length) {
+    rows += `<tr><td colspan="10" style="padding:6px 9px;font-size:0.7rem;color:#4a5568;background:#0f1117;letter-spacing:.05em;text-transform:uppercase">
+      — Posizioni chiuse (${closed.length}) —
+    </td></tr>`;
+  }
+
+  // ── Closed positions (grayed) ──
+  for (const c of closed) {
+    const plColor = c.realizedPL >= 0 ? '#48bb78' : '#fc8181';
+    const tc = c.type==='Azione'?'#4a6a8a':c.type==='ETF'?'#3a6a4a':'#5a4a6a';
+    const barW = Math.min(Math.abs(c.realizedPLpct), 100);
+    rows += `<tr style="opacity:0.5">
+      <td><span class="ticker-badge" style="background:#1e2332;color:#718096">${c.ticker}</span></td>
+      <td style="max-width:170px;overflow:hidden;text-overflow:ellipsis;color:#4a5568">
+        ${c.desc||c.ticker} <span style="font-size:.65rem;background:#1e2332;color:#4a5568;border-radius:3px;padding:1px 4px;margin-left:3px">CHIUSA</span>
+      </td>
+      <td><span style="font-size:.7rem;color:${tc}">${c.type}</span></td>
+      <td style="text-align:right;color:#4a5568">${fmt(c.boughtQty,0)}</td>
+      <td style="text-align:right;color:#4a5568">€${fmt(c.avgBuyPrice,4)}</td>
+      <td style="text-align:right;color:#718096">€${fmt(c.avgSellPrice,4)}<br><span style="font-size:.65rem;color:#4a5568">venduta</span></td>
+      <td style="text-align:right;color:#4a5568">—</td>
+      <td style="text-align:right"><span style="color:${plColor}">${c.realizedPL>=0?'+':'-'}€${fmt(Math.abs(c.realizedPL))}</span></td>
+      <td style="text-align:right"><span style="color:${plColor}">${c.realizedPLpct>=0?'+':''}${fmt(c.realizedPLpct)}%</span></td>
+      <td style="width:75px"><div class="gain-bar"><div class="bar-bg"><div class="bar-fill" style="width:${barW}%;background:${plColor}"></div></div><span style="font-size:.68rem;color:${plColor}">${c.realizedPLpct>=0?'+':''}${fmt(c.realizedPLpct,1)}%</span></div></td>
+    </tr>`;
+  }
+
   document.getElementById('liveTable').innerHTML = rows;
   // Reset search and show count
   const srch = document.getElementById('tableSearch');
   if (srch) srch.value = '';
   const allRows = document.querySelectorAll('#liveTable tr:not(.total-row):not(.loading-row)');
   const cnt = document.getElementById('tableCount');
-  if (cnt) cnt.textContent = `${allRows.length} strumenti`;
+  if (cnt) cnt.textContent = `${positions.length} aperte · ${closed.length} chiuse`;
   // KPI market
   document.getElementById('kpiMkt').textContent = '€'+Math.round(totalMkt).toLocaleString('it-IT');
   const plEl = document.getElementById('kpiPL');
@@ -1035,15 +1145,50 @@ function filterLiveTable(q) {
 }
 
 // ════════════════════════════════════════════════
+// PLUSVALENZE / MINUSVALENZE
+// ════════════════════════════════════════════════
+function renderRealizedPL(byYear) {
+  const card = document.getElementById('realizedCard');
+  const tbody = document.getElementById('realizedTable');
+  if (!byYear.length) { card.style.display='none'; return; }
+  card.style.display='block';
+
+  let totalPlusv=0, totalMinusv=0;
+  let html = '';
+  for (const y of byYear) {
+    const net = y.plusv - y.minusv;
+    totalPlusv  += y.plusv;
+    totalMinusv += y.minusv;
+    html += `<tr>
+      <td style="font-weight:600;color:#a0aec0">${y.year}</td>
+      <td style="text-align:right;color:#48bb78">+€${fmt(y.plusv)}</td>
+      <td style="text-align:right;color:#fc8181">-€${fmt(y.minusv)}</td>
+      <td style="text-align:right"><span class="${net>=0?'green':'red'}" style="font-weight:600">${net>=0?'+':'-'}€${fmt(Math.abs(net))}</span></td>
+      <td style="text-align:right;color:#4a5568;font-size:.75rem">${y.count} ${y.count===1?'vendita':'vendite'}</td>
+    </tr>`;
+  }
+  const totNet = totalPlusv - totalMinusv;
+  html += `<tr style="border-top:2px solid #2d3748;font-weight:700">
+    <td style="color:#a0aec0">Totale</td>
+    <td style="text-align:right;color:#48bb78">+€${fmt(totalPlusv)}</td>
+    <td style="text-align:right;color:#fc8181">-€${fmt(totalMinusv)}</td>
+    <td style="text-align:right"><span class="${totNet>=0?'green':'red'}">${totNet>=0?'+':'-'}€${fmt(Math.abs(totNet))}</span></td>
+    <td></td>
+  </tr>`;
+  tbody.innerHTML = html;
+}
+
+// ════════════════════════════════════════════════
 // MAIN RENDER
 // ════════════════════════════════════════════════
 function renderDashboard(rows) {
-  const positions = buildPositions(rows);
+  const {open, closed, realized} = buildPositions(rows);
   const monthly   = buildMonthly(rows);
   const yearly    = buildYearly(monthly);
   const payers    = buildTopPayers(rows);
+  const realizedByYear = buildRealizedByYear(realized);
 
-  G = {rows, positions, monthly, yearly, payers};
+  G = {rows, positions: open, closedPositions: closed, realized, realizedByYear, monthly, yearly, payers};
 
   // Header subtitle
   const dates = rows.map(r=>r.date).filter(Boolean).sort((a,b)=>a-b);
@@ -1060,11 +1205,12 @@ function renderDashboard(rows) {
   // Charts & tables
   updateDynCharts();
   updateKPIs();
-  renderPieCharts(positions);
+  renderPieCharts(open);
   renderIncomeCharts(monthly, yearly);
   fillRank('divTable', payers.div, C.blue);
   fillRank('etfTable', payers.etf, C.green);
   fillCoupons(payers.coup);
+  renderRealizedPL(realizedByYear);
 
   // Show dashboard
   document.getElementById('uploadZone').style.display = 'none';
