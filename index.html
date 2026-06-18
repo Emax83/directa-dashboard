@@ -1,9 +1,77 @@
 <!DOCTYPE html>
-<html lang="it">
+<html lang="it" prefix="og: https://ogp.me/ns#">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Portfolio Dashboard – Directa</title>
+
+<!-- ── PRIMARY META ── -->
+<title>Portafoglio analisi DIRECTA – Dashboard gratuita per investitori</title>
+<meta name="description" content="Dashboard gratuita per analizzare il tuo portafoglio Directa SIM. Carica il CSV dei movimenti e visualizza posizioni live, dividendi, capital gain, minusvalenze, composizione per asset class, settore e geografia. 100% client-side, nessun dato memorizzato.">
+<meta name="keywords" content="directa sim, portafoglio, dashboard, dividendi, capital gain, minusvalenze, plusvalenze, ETF, azioni, certificati, investimenti, analisi portafoglio, trading, borsa italiana, rendimento, yield">
+<meta name="author" content="emax83dev">
+<meta name="robots" content="index, follow">
+<meta name="language" content="Italian">
+<meta name="revisit-after" content="7 days">
+<link rel="canonical" href="https://directa-dashboard.vercel.app/">
+
+<!-- ── OPEN GRAPH (Facebook, LinkedIn, WhatsApp) ── -->
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://directa-dashboard.vercel.app/">
+<meta property="og:title" content="Portafoglio analisi DIRECTA – Dashboard gratuita">
+<meta property="og:description" content="Analizza dividendi, capital gain, minusvalenze e composizione del tuo portafoglio Directa. Prezzi live da Yahoo Finance. Nessun dato memorizzato, tutto nel browser.">
+<meta property="og:image" content="https://directa-dashboard.vercel.app/og-image.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Screenshot della dashboard portafoglio Directa">
+<meta property="og:locale" content="it_IT">
+<meta property="og:site_name" content="Portafoglio analisi DIRECTA">
+
+<!-- ── TWITTER CARD ── -->
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:url" content="https://directa-dashboard.vercel.app/">
+<meta name="twitter:title" content="Portafoglio analisi DIRECTA – Dashboard gratuita">
+<meta name="twitter:description" content="Analizza dividendi, capital gain, minusvalenze e composizione del tuo portafoglio Directa. 100% client-side, gratuito.">
+<meta name="twitter:image" content="https://directa-dashboard.vercel.app/og-image.png">
+<meta name="twitter:creator" content="@emax83dev">
+
+<!-- ── STRUCTURED DATA (JSON-LD) ── -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebApplication",
+  "name": "Portafoglio analisi DIRECTA",
+  "url": "https://directa-dashboard.vercel.app/",
+  "description": "Dashboard gratuita per analizzare il portafoglio Directa SIM. Posizioni live, dividendi, capital gain, minusvalenze, composizione per asset class e geografia.",
+  "applicationCategory": "FinanceApplication",
+  "operatingSystem": "Web Browser",
+  "offers": {
+    "@type": "Offer",
+    "price": "0",
+    "priceCurrency": "EUR"
+  },
+  "author": {
+    "@type": "Person",
+    "name": "emax83dev",
+    "url": "https://www.emax83dev.it"
+  },
+  "featureList": [
+    "Analisi portafoglio Directa SIM",
+    "Prezzi live Yahoo Finance",
+    "Calcolo dividendi e rendimenti",
+    "Plusvalenze e minusvalenze per anno",
+    "Composizione per asset class, settore e geografia",
+    "100% client-side, nessun dato trasmesso"
+  ],
+  "inLanguage": "it-IT",
+  "isAccessibleForFree": true
+}
+</script>
+
+<!-- ── PERFORMANCE ── -->
+<link rel="preconnect" href="https://cdnjs.cloudflare.com">
+<link rel="dns-prefetch" href="https://query1.finance.yahoo.com">
+<link rel="dns-prefetch" href="https://corsproxy.io">
+
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
