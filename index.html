@@ -718,10 +718,15 @@ function parseCSV(text) {
   // Strip UTF-8 BOM if present
   if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
   const lines = text.split(/\r?\n|\r/);
-  // Find header row (search up to 30 lines)
+  // Find header row (search up to 30 lines).
+  // Must contain BOTH a date/tipo keyword AND 'importo' to avoid false-matching
+  // metadata lines like "Tutti i movimenti ordinati per Data Operazione".
   let hi = -1;
   for (let i = 0; i < Math.min(lines.length, 30); i++) {
-    if (/tipo.{0,10}operaz/i.test(lines[i]) || /data.{0,10}operaz/i.test(lines[i])) { hi = i; break; }
+    const l = lines[i];
+    const hasDateOrTipo = /tipo.{0,10}operaz/i.test(l) || /data.{0,10}operaz/i.test(l);
+    const hasAmount     = /importo/i.test(l);
+    if (hasDateOrTipo && hasAmount) { hi = i; break; }
   }
   if (hi < 0) {
     const preview = lines.slice(0,5).map((l,i)=>`${i}: ${l.slice(0,60)}`).join('\n');
