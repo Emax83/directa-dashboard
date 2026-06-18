@@ -154,6 +154,9 @@ tbody tr:hover{background:#1e2540}
 .bar-cell{display:flex;align-items:center;gap:7px}
 .bar-bg2{flex:1;background:#2d3748;border-radius:3px;height:4px}
 .bar-fill2{height:4px;border-radius:3px}
+.row-closed{opacity:0.6;color:#adadad!important}
+.row-closed td,.row-closed span,.row-closed strong{color:#adadad!important}
+.row-closed .ticker-badge{background:#1e2332!important;color:#adadad!important}
 
 /* ── COLORS ── */
 .green{color:#48bb78}.red{color:#fc8181}.blue{color:#63b3ed}.purple{color:#b794f4}
@@ -1173,18 +1176,17 @@ function renderTable(pm) {
   // ── Closed positions (grayed) ──
   for (const c of closed) {
     const plColor = c.realizedPL >= 0 ? '#48bb78' : '#fc8181';
-    const tc = c.type==='Azione'?'#4a6a8a':c.type==='ETF'?'#3a6a4a':'#5a4a6a';
     const barW = Math.min(Math.abs(c.realizedPLpct), 100);
-    rows += `<tr style="opacity:0.5">
-      <td><span class="ticker-badge" style="background:#1e2332;color:#718096">${c.ticker}</span></td>
-      <td style="max-width:170px;overflow:hidden;text-overflow:ellipsis;color:#4a5568">
-        ${c.desc||c.ticker} <span style="font-size:.65rem;background:#1e2332;color:#4a5568;border-radius:3px;padding:1px 4px;margin-left:3px">CHIUSA</span>
+    rows += `<tr class="row-closed">
+      <td><span class="ticker-badge">${c.ticker}</span></td>
+      <td style="max-width:170px;overflow:hidden;text-overflow:ellipsis">
+        ${c.desc||c.ticker} <span style="font-size:.65rem;background:#1e2332;border-radius:3px;padding:1px 4px;margin-left:3px">CHIUSA</span>
       </td>
-      <td><span style="font-size:.7rem;color:${tc}">${c.type}</span></td>
-      <td style="text-align:right;color:#4a5568">${fmt(c.boughtQty,0)}</td>
-      <td style="text-align:right;color:#4a5568">€${fmt(c.avgBuyPrice,4)}</td>
-      <td style="text-align:right;color:#718096">€${fmt(c.avgSellPrice,4)}<br><span style="font-size:.65rem;color:#4a5568">venduta</span></td>
-      <td style="text-align:right;color:#4a5568">—</td>
+      <td style="font-size:.7rem">${c.type}</td>
+      <td style="text-align:right">${fmt(c.boughtQty,0)}</td>
+      <td style="text-align:right">€${fmt(c.avgBuyPrice,4)}</td>
+      <td style="text-align:right">€${fmt(c.avgSellPrice,4)}<br><span style="font-size:.65rem">venduta</span></td>
+      <td style="text-align:right">—</td>
       <td style="text-align:right"><span style="color:${plColor}">${c.realizedPL>=0?'+':'-'}€${fmt(Math.abs(c.realizedPL))}</span></td>
       <td style="text-align:right"><span style="color:${plColor}">${c.realizedPLpct>=0?'+':''}${fmt(c.realizedPLpct)}%</span></td>
       <td style="width:75px"><div class="gain-bar"><div class="bar-bg"><div class="bar-fill" style="width:${barW}%;background:${plColor}"></div></div><span style="font-size:.68rem;color:${plColor}">${c.realizedPLpct>=0?'+':''}${fmt(c.realizedPLpct,1)}%</span></div></td>
