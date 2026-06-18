@@ -1212,6 +1212,20 @@ function buildIsinMap() {
   return map;
 }
 
+/** Build ticker → description from positions (CSV "Descrizione" column) */
+function buildDescMap() {
+  const map = {};
+  for (const p of [...(G.positions||[]), ...(G.closedPositions||[])]) {
+    if (p.ticker && p.desc) map[p.ticker] = p.desc;
+  }
+  // fallback: scan rows for any description
+  for (const r of G.rows||[]) {
+    const t = TICKER_ALIASES[r.ticker] || r.ticker;
+    if (t && r.desc && !map[t]) map[t] = r.desc;
+  }
+  return map;
+}
+
 function fillRank(id, data, color) {
   const max = Math.max(...data.map(x=>x.v), 1);
   const isinMap = buildIsinMap();
@@ -1235,14 +1249,15 @@ function fillRank(id, data, color) {
 
 function fillCoupons(data) {
   const isinMap = buildIsinMap();
+  const descMap = buildDescMap();
   const b = document.getElementById('coupTable');
   b.innerHTML = '';
   data.forEach(x => {
-    const meta = TMETA[x.t] || {};
     const isin = isinMap[x.t] || '';
+    const desc = descMap[x.t] || '';
     b.innerHTML += `<tr>
       <td><strong style="color:${C.purple}">${x.t}</strong>${isin?`<br><span style="font-size:.62rem;color:#4a5568;font-family:monospace">${isin}</span>`:''}</td>
-      <td style="font-size:.76rem;color:#a0aec0">${meta.desc || x.t}</td>
+      <td style="font-size:.76rem;color:#a0aec0;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${desc}">${desc || '—'}</td>
       <td style="color:${C.purple}">€${x.v.toFixed(2)}</td></tr>`;
   });
   if (!data.length) b.innerHTML = '<tr><td colspan="3" style="color:#4a5568;padding:10px">Nessun dato</td></tr>';
@@ -1362,58 +1377,105 @@ function fmtPriceDate(isoStr) {
     : d.toLocaleDateString('it-IT', {day:'2-digit', month:'2-digit'});
 }
 
+/** Aggiorna in-place le celle price-dipendenti di un singolo TR */
+function patchRowPrice(ticker, q) {
+  const tr = document.querySelector(`#liveTable tr[data-ticker="${CSS.escape(ticker)}"]`);
+  if (!tr) return;
+  const cells = tr.querySelectorAll('td');
+  if (cells.length < 14) return;
+
+  const pos = (G.positions || []).find(p => p.ticker === ticker);
+  if (!pos) return;
+
+  const lp = q?.regularMarketPrice ?? null;
+  const ch = q?.regularMarketChange ?? null;
+  const cp = q?.regularMarketChangePercent ?? null;
+  const mv = lp != null ? lp * pos.shares : null;
+  const pl = mv != null ? mv - pos.totalCost : null;
+  const pp = pl != null ? (pl / pos.totalCost) * 100 : null;
+  const bc = pp == null ? '#4a5568' : pp >= 0 ? '#48bb78' : '#fc8181';
+  const priceDate = q?.fetchedAt ? fmtPriceDate(q.fetchedAt) : '—';
+
+  // col 5 — Prezzo Live
+  cells[5].innerHTML = lp != null
+    ? (q?.source === 'bnp'
+        ? `<strong>€${fmt(lp,4)}</strong><br><span style="font-size:.68rem;color:${cp>=0?'#48bb78':'#fc8181'}">${cp!=null?(cp>=0?'+':'')+fmt(cp,2)+'%':''} <span style="color:#4a5568">mid</span></span>`
+        : `<strong>€${fmt(lp,4)}</strong><br><span style="font-size:.68rem;color:${ch>=0?'#48bb78':'#fc8181'}">${ch>=0?'+':''}${fmt(ch,3)} (${fmt(cp,2)}%)</span>`)
+    : '<span class="cert-tag">N/D</span>';
+
+  // col 6 — Valore
+  cells[6].innerHTML = mv != null
+    ? `€${fmt(mv)}`
+    : `<span style="color:#4a5568">€${fmt(pos.totalCost)}</span>`;
+
+  // col 8 — P&L €
+  cells[8].innerHTML = pl != null
+    ? `<span class="${pl>=0?'green':'red'}">${pl>=0?'+':'-'}€${fmt(Math.abs(pl))}</span>`
+    : '<span style="color:#4a5568">—</span>';
+
+  // col 9 — P&L %
+  cells[9].innerHTML = pp != null
+    ? `<span class="${pp>=0?'green':'red'}">${pp>=0?'+':''}${fmt(pp)}%</span>`
+    : '<span style="color:#4a5568">—</span>';
+
+  // col 12 — Barra
+  cells[12].innerHTML = `<div class="gain-bar"><div class="bar-bg"><div class="bar-fill" style="width:${pp!=null?Math.min(Math.abs(pp),100):0}%;background:${bc}"></div></div><span style="font-size:.68rem;color:${bc}">${pp!=null?(pp>=0?'+':'')+fmt(pp,1)+'%':'—'}</span></div>`;
+
+  // col 13 — Data Prezzo
+  cells[13].textContent = priceDate;
+  cells[13].style.color = '#718096';
+}
+
 async function fetchPrices(forceRefresh = false) {
   const positions = G.positions || [];
-
-  // Yahoo Finance tickers (azioni + ETF)
   const liveYahoo = positions.filter(p => p.yahoo);
-  // BNP Paribas certificates (ISIN NLBNPIT*)
   const liveBNP   = positions.filter(p => !p.yahoo && p.isin && p.isin.startsWith('NLBNPIT'));
-
   if (!liveYahoo.length && !liveBNP.length) return;
 
   const cache = loadPriceCache();
+  const pm = {...cache};
+
+  // ── Render subito con dati esistenti (cache o costo) ──────
+  renderTable(pm);
 
   const toFetchYahoo = forceRefresh ? liveYahoo : liveYahoo.filter(p => !isPriceFresh(cache[p.yahoo]));
   const toFetchBNP   = forceRefresh ? liveBNP   : liveBNP.filter(p => !isPriceFresh(cache[p.isin]));
   const total = toFetchYahoo.length + toFetchBNP.length;
 
-  // All fresh from cache — render immediately
   if (total === 0) {
     document.getElementById('liveDot').style.background = '#48bb78';
     document.getElementById('liveStatus').textContent = 'Cache · ' + new Date().toLocaleTimeString('it-IT');
-    renderTable(cache);
     return;
   }
 
-  document.getElementById('liveTable').innerHTML =
-    `<tr class="loading-row"><td colspan="14"><span class="spinner"></span>Recupero prezzi (0/${total})…</td></tr>`;
   document.getElementById('errorBox').innerHTML = '';
   document.getElementById('liveDot').style.background = '#f6ad55';
   document.getElementById('liveStatus').textContent = `Aggiornamento (0/${total})…`;
 
-  const pm = {...cache};
   let done = 0;
 
-  // ── Yahoo Finance (azioni + ETF) ──────────────────────────
+  // ── Yahoo Finance ──────────────────────────────────────────
   for (const pos of toFetchYahoo) {
     const q = await scrapeSinglePrice(pos.yahoo);
-    if (q) { pm[pos.yahoo] = q; cache[pos.yahoo] = q; }
+    if (q) { pm[pos.yahoo] = q; cache[pos.yahoo] = q; patchRowPrice(pos.ticker, q); }
     done++;
     document.getElementById('liveStatus').textContent = `Aggiornamento (${done}/${total})…`;
     if (done < total) await new Promise(r => setTimeout(r, 500));
   }
 
-  // ── BNP Paribas certificates ──────────────────────────────
+  // ── BNP Paribas ────────────────────────────────────────────
   for (const pos of toFetchBNP) {
     const q = await scrapeBNPPrice(pos.isin);
-    if (q) { pm[pos.isin] = q; cache[pos.isin] = q; }
+    if (q) { pm[pos.isin] = q; cache[pos.isin] = q; patchRowPrice(pos.ticker, q); }
     done++;
     document.getElementById('liveStatus').textContent = `Aggiornamento (${done}/${total})…`;
     if (done < total) await new Promise(r => setTimeout(r, 500));
   }
 
   savePriceCache(cache);
+
+  // ── Render finale: aggiorna KPI, Peso%, Total Return ───────
+  renderTable(pm);
 
   const fetchedYahoo = liveYahoo.filter(p => pm[p.yahoo]?.regularMarketPrice != null).length;
   const fetchedBNP   = liveBNP.filter(p => pm[p.isin]?.regularMarketPrice != null).length;
@@ -1431,7 +1493,6 @@ async function fetchPrices(forceRefresh = false) {
     document.getElementById('liveDot').style.background = '#fc8181';
     document.getElementById('liveStatus').textContent = 'Errore connessione';
   }
-  renderTable(pm);
 }
 
 function renderTable(pm) {
@@ -1489,7 +1550,7 @@ function renderTable(pm) {
       : (pos.isin && pos.isin.startsWith('NLBNPIT')
           ? `https://investimenti.bnpparibas.it/product-details/${pos.isin}/`
           : null);
-    rows += `<tr>
+    rows += `<tr data-ticker="${pos.ticker}">
       <td style="white-space:nowrap">
         ${yhUrl ? `<a class="ticker-badge" href="${yhUrl}" target="_blank" rel="noopener" title="${pos.yahoo?'Apri su Yahoo Finance':'Apri su BNP Paribas'}">${pos.ticker}</a>` : `<span class="ticker-badge">${pos.ticker}</span>`}
         <button onclick="openTickerModal('${pos.ticker}')" title="Dettaglio" style="background:none;border:none;cursor:pointer;color:#4a5568;padding:0 2px;font-size:.75rem;vertical-align:middle" onmouseover="this.style.color='#a0aec0'" onmouseout="this.style.color='#4a5568'">ℹ</button>
