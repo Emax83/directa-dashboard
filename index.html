@@ -1313,27 +1313,40 @@ async function scrapeSinglePrice(sym) {
   return null;
 }
 
-/** Scrape BNP Paribas certificate price by ISIN */
+/** Scrape BNP Paribas certificate price by ISIN.
+ *  Page uses: <span class="push-field" data-field="bid" data-item="...">100,16</span>
+ *  Italian number format: period=thousands sep, comma=decimal → "1.234,56"
+ */
 async function scrapeBNPPrice(isin) {
   try {
     const html = await fetchTextProxy(`https://investimenti.bnpparibas.it/product-details/${isin}/`);
     if (!html) return null;
-    // Page format: Vendi**€ 72,54**  Compra**€ 73,54**  Variazione**-3,43 %**
-    const mVendi  = html.match(/Vendi[\s\S]{0,80}?€\s*([\d.,]+)/);
-    const mCompra = html.match(/Compra[\s\S]{0,80}?€\s*([\d.,]+)/);
-    const mChg    = html.match(/Variazione[\s\S]{0,60}?([+-]?[\d.,]+)\s*%/);
-    if (mVendi && mCompra) {
-      const bid = parseFloat(mVendi[1].replace(/\./g,'').replace(',','.'));
-      const ask = parseFloat(mCompra[1].replace(/\./g,'').replace(',','.'));
-      const mid = (bid + ask) / 2;
-      if (!isNaN(mid)) return {
-        regularMarketPrice:         mid,
-        regularMarketChange:        null,
-        regularMarketChangePercent: mChg ? parseFloat(mChg[1].replace(',','.')) : null,
-        fetchedAt: new Date().toISOString(),
-        source: 'bnp',
-      };
-    }
+
+    const parseIT = s => parseFloat(s.replace(/\./g, '').replace(',', '.'));
+
+    const mBid = html.match(/data-field="bid"[^>]*>\s*([\d.,]+)/);
+    const mAsk = html.match(/data-field="ask"[^>]*>\s*([\d.,]+)/);
+
+    if (!mBid && !mAsk) return null;
+
+    const bid = mBid ? parseIT(mBid[1]) : null;
+    const ask = mAsk ? parseIT(mAsk[1]) : null;
+    const mid = (bid != null && ask != null) ? (bid + ask) / 2 : (bid ?? ask);
+
+    if (!mid || isNaN(mid)) return null;
+
+    // Try to get % change (field name varies: percentChange / dailyChange / changePercent)
+    const mChg = html.match(/data-field="percentChange"[^>]*>\s*([+-]?[\d.,]+)/)
+               || html.match(/data-field="dailyChangePercent"[^>]*>\s*([+-]?[\d.,]+)/)
+               || html.match(/data-field="changePercent"[^>]*>\s*([+-]?[\d.,]+)/);
+
+    return {
+      regularMarketPrice:         mid,
+      regularMarketChange:        null,
+      regularMarketChangePercent: mChg ? parseIT(mChg[1]) : null,
+      fetchedAt: new Date().toISOString(),
+      source: 'bnp',
+    };
   } catch(e) {}
   return null;
 }

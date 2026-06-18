@@ -140,10 +140,18 @@ Il proxy Vercel (`api/proxy.js`) accetta URL Yahoo Finance e `investimenti.bnppa
 
 ### Prezzi certificati BNP Paribas
 URL: `https://investimenti.bnpparibas.it/product-details/{ISIN}/`
-Funzione: `scrapeBNPPrice(isin)` — estrae bid (Vendi) e ask (Compra), calcola mid.
+Funzione: `scrapeBNPPrice(isin)` — estrae bid e ask, calcola mid.
 Chiave nel price map: ISIN (es. `NLBNPIT2EPS1`) invece del simbolo Yahoo.
 In `renderTable()`: `const q = pos.yahoo ? pm[pos.yahoo] : (pos.isin ? pm[pos.isin] : null)`
 In `fetchPrices()`: i certificati `liveBNP = positions.filter(p => !p.yahoo && p.isin?.startsWith('NLBNPIT'))`
+
+Struttura HTML reale della pagina BNP:
+```html
+<span class=" push-field" data-field="bid"  data-item="X0000010800{ISIN}">100,16</span>
+<span class=" push-field" data-field="ask"  data-item="X0000010800{ISIN}">100,16</span>
+```
+Formato numeri: italiano (virgola decimale, punto migliaia) → `parseIT = s => parseFloat(s.replace(/\./g,'').replace(',','.'))`
+Il campo `percentChange` potrebbe non essere presente — il fallback è `null`.
 
 ---
 
