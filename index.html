@@ -1238,8 +1238,10 @@ function fillCoupons(data) {
 // ════════════════════════════════════════════════
 const PRICE_CACHE_KEY = 'directa_prices_v1';
 const PROXIES = [
-  u => `https://corsproxy.io/?${encodeURIComponent(u)}`,
-  u => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`,
+  u => `/api/proxy?url=${encodeURIComponent(u)}`,                         // Vercel serverless (deployed)
+  u => `https://corsproxy.io/?${encodeURIComponent(u)}`,                  // fallback locale
+  u => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`,     // fallback locale
+  u => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(u)}`,// fallback locale
 ];
 
 async function fetchTextProxy(url) {
