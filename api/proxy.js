@@ -1,4 +1,5 @@
-// Vercel serverless proxy for Yahoo Finance HTML scraping.
+// Vercel serverless proxy for financial data scraping.
+// Allowed: Yahoo Finance + BNP Paribas Investimenti
 // Usage: /api/proxy?url=https%3A%2F%2Ffinance.yahoo.com%2Fquote%2FBAMI.MI%2F
 export default async function handler(req, res) {
   const { url } = req.query;
@@ -8,10 +9,13 @@ export default async function handler(req, res) {
   try { decoded = decodeURIComponent(url); }
   catch(e) { return res.status(400).json({ error: 'Invalid url encoding' }); }
 
-  // Only allow Yahoo Finance to prevent open-proxy abuse
-  if (!decoded.startsWith('https://finance.yahoo.com/') &&
-      !decoded.startsWith('https://query1.finance.yahoo.com/') &&
-      !decoded.startsWith('https://query2.finance.yahoo.com/')) {
+  const ALLOWED = [
+    'https://finance.yahoo.com/',
+    'https://query1.finance.yahoo.com/',
+    'https://query2.finance.yahoo.com/',
+    'https://investimenti.bnpparibas.it/',
+  ];
+  if (!ALLOWED.some(prefix => decoded.startsWith(prefix))) {
     return res.status(403).json({ error: 'URL not allowed' });
   }
 

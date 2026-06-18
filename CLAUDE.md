@@ -22,7 +22,8 @@ Dashboard finanziario single-file per conto Directa SIM 75769.
 |-----|-------------|
 | `BUY` | acquisto |
 | `SELL` | vendita |
-| `DIV` | dividendo azione/ETF |
+| `DIVIDEND` | dividendo azione |
+| `ETF_INCOME` | provento ETF |
 | `COUPON` | cedola certificato (reddito diverso → compensa minusvalenze) |
 | `COMMISSION` | commissione |
 | `TAX` | ritenuta fiscale |
@@ -130,8 +131,19 @@ Regex chiave per il change%: `/data-testid="qsp-price-change-percent"[^>]*>\s*\(
 Le classi CSS sono instabili — usare solo `data-testid`.
 
 CORS proxy (in ordine di tentativo):
-1. `https://corsproxy.io/?{encoded_url}`
-2. `https://api.allorigins.win/raw?url={encoded_url}`
+1. `/api/proxy?url={encoded_url}` — Vercel serverless (deployed), prima scelta
+2. `https://corsproxy.io/?{encoded_url}`
+3. `https://api.allorigins.win/raw?url={encoded_url}`
+4. `https://api.codetabs.com/v1/proxy?quest={encoded_url}`
+
+Il proxy Vercel (`api/proxy.js`) accetta URL Yahoo Finance e `investimenti.bnpparibas.it`.
+
+### Prezzi certificati BNP Paribas
+URL: `https://investimenti.bnpparibas.it/product-details/{ISIN}/`
+Funzione: `scrapeBNPPrice(isin)` — estrae bid (Vendi) e ask (Compra), calcola mid.
+Chiave nel price map: ISIN (es. `NLBNPIT2EPS1`) invece del simbolo Yahoo.
+In `renderTable()`: `const q = pos.yahoo ? pm[pos.yahoo] : (pos.isin ? pm[pos.isin] : null)`
+In `fetchPrices()`: i certificati `liveBNP = positions.filter(p => !p.yahoo && p.isin?.startsWith('NLBNPIT'))`
 
 ---
 

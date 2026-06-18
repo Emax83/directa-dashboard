@@ -519,6 +519,7 @@ a.ticker-badge:hover{background:#2b6cb0;color:#fff}
 <!-- ══ FOOTER ══ -->
 <footer class="site-footer">
   <span>© 2026 <a href="https://www.emax83dev.it" target="_blank" rel="noopener">emax83dev</a></span>
+  <button onclick="openDonateModal()" style="background:none;border:1px solid #2d3748;border-radius:20px;color:#718096;padding:5px 14px;font-size:0.75rem;cursor:pointer;transition:all .2s;line-height:1.4" onmouseover="this.style.borderColor='#f6ad55';this.style.color='#f6ad55'" onmouseout="this.style.borderColor='#2d3748';this.style.color='#718096'">☕ Ti piace la web app?</button>
   <span>
     <a href="#" onclick="openPrivacyModal();return false;">Termini e condizioni & Privacy Policy</a>
   </span>
@@ -1201,14 +1202,26 @@ function renderIncomeCharts(monthly, yearly) {
 // ════════════════════════════════════════════════
 // RANKING TABLES
 // ════════════════════════════════════════════════
+/** Build ticker → ISIN lookup from all rows */
+function buildIsinMap() {
+  const map = {};
+  for (const r of G.rows || []) {
+    const t = TICKER_ALIASES[r.ticker] || r.ticker;
+    if (t && r.isin) map[t] = r.isin;
+  }
+  return map;
+}
+
 function fillRank(id, data, color) {
   const max = Math.max(...data.map(x=>x.v), 1);
+  const isinMap = buildIsinMap();
   const b = document.getElementById(id);
   b.innerHTML = '';
   data.forEach(x => {
     const p = (x.v/max*100).toFixed(0);
+    const isin = isinMap[x.t] || '';
     b.innerHTML += `<tr>
-      <td><strong>${x.t}</strong></td>
+      <td><strong>${x.t}</strong>${isin?`<br><span style="font-size:.62rem;color:#4a5568;font-family:monospace">${isin}</span>`:''}</td>
       <td style="color:${color}">€${x.v.toFixed(2)}</td>
       <td style="width:110px">
         <div class="bar-cell">
@@ -1221,12 +1234,14 @@ function fillRank(id, data, color) {
 }
 
 function fillCoupons(data) {
+  const isinMap = buildIsinMap();
   const b = document.getElementById('coupTable');
   b.innerHTML = '';
   data.forEach(x => {
     const meta = TMETA[x.t] || {};
+    const isin = isinMap[x.t] || '';
     b.innerHTML += `<tr>
-      <td><strong style="color:${C.purple}">${x.t}</strong></td>
+      <td><strong style="color:${C.purple}">${x.t}</strong>${isin?`<br><span style="font-size:.62rem;color:#4a5568;font-family:monospace">${isin}</span>`:''}</td>
       <td style="font-size:.76rem;color:#a0aec0">${meta.desc || x.t}</td>
       <td style="color:${C.purple}">€${x.v.toFixed(2)}</td></tr>`;
   });
@@ -1298,6 +1313,31 @@ async function scrapeSinglePrice(sym) {
   return null;
 }
 
+/** Scrape BNP Paribas certificate price by ISIN */
+async function scrapeBNPPrice(isin) {
+  try {
+    const html = await fetchTextProxy(`https://investimenti.bnpparibas.it/product-details/${isin}/`);
+    if (!html) return null;
+    // Page format: Vendi**€ 72,54**  Compra**€ 73,54**  Variazione**-3,43 %**
+    const mVendi  = html.match(/Vendi[\s\S]{0,80}?€\s*([\d.,]+)/);
+    const mCompra = html.match(/Compra[\s\S]{0,80}?€\s*([\d.,]+)/);
+    const mChg    = html.match(/Variazione[\s\S]{0,60}?([+-]?[\d.,]+)\s*%/);
+    if (mVendi && mCompra) {
+      const bid = parseFloat(mVendi[1].replace(/\./g,'').replace(',','.'));
+      const ask = parseFloat(mCompra[1].replace(/\./g,'').replace(',','.'));
+      const mid = (bid + ask) / 2;
+      if (!isNaN(mid)) return {
+        regularMarketPrice:         mid,
+        regularMarketChange:        null,
+        regularMarketChangePercent: mChg ? parseFloat(mChg[1].replace(',','.')) : null,
+        fetchedAt: new Date().toISOString(),
+        source: 'bnp',
+      };
+    }
+  } catch(e) {}
+  return null;
+}
+
 /** Format fetchedAt timestamp for the "Data Prezzo" column */
 function fmtPriceDate(isoStr) {
   if (!isoStr) return '—';
@@ -1311,14 +1351,22 @@ function fmtPriceDate(isoStr) {
 
 async function fetchPrices(forceRefresh = false) {
   const positions = G.positions || [];
-  const live = positions.filter(p => p.yahoo);
-  if (!live.length) return;
+
+  // Yahoo Finance tickers (azioni + ETF)
+  const liveYahoo = positions.filter(p => p.yahoo);
+  // BNP Paribas certificates (ISIN NLBNPIT*)
+  const liveBNP   = positions.filter(p => !p.yahoo && p.isin && p.isin.startsWith('NLBNPIT'));
+
+  if (!liveYahoo.length && !liveBNP.length) return;
 
   const cache = loadPriceCache();
-  const toFetch = forceRefresh ? live : live.filter(p => !isPriceFresh(cache[p.yahoo]));
+
+  const toFetchYahoo = forceRefresh ? liveYahoo : liveYahoo.filter(p => !isPriceFresh(cache[p.yahoo]));
+  const toFetchBNP   = forceRefresh ? liveBNP   : liveBNP.filter(p => !isPriceFresh(cache[p.isin]));
+  const total = toFetchYahoo.length + toFetchBNP.length;
 
   // All fresh from cache — render immediately
-  if (toFetch.length === 0) {
+  if (total === 0) {
     document.getElementById('liveDot').style.background = '#48bb78';
     document.getElementById('liveStatus').textContent = 'Cache · ' + new Date().toLocaleTimeString('it-IT');
     renderTable(cache);
@@ -1326,29 +1374,42 @@ async function fetchPrices(forceRefresh = false) {
   }
 
   document.getElementById('liveTable').innerHTML =
-    `<tr class="loading-row"><td colspan="14"><span class="spinner"></span>Recupero prezzi (0/${toFetch.length})…</td></tr>`;
+    `<tr class="loading-row"><td colspan="14"><span class="spinner"></span>Recupero prezzi (0/${total})…</td></tr>`;
   document.getElementById('errorBox').innerHTML = '';
   document.getElementById('liveDot').style.background = '#f6ad55';
-  document.getElementById('liveStatus').textContent = `Aggiornamento (0/${toFetch.length})…`;
+  document.getElementById('liveStatus').textContent = `Aggiornamento (0/${total})…`;
 
-  // Merge cache into pm so we render stale prices for non-fetched tickers immediately
   const pm = {...cache};
   let done = 0;
 
-  for (const pos of toFetch) {
+  // ── Yahoo Finance (azioni + ETF) ──────────────────────────
+  for (const pos of toFetchYahoo) {
     const q = await scrapeSinglePrice(pos.yahoo);
     if (q) { pm[pos.yahoo] = q; cache[pos.yahoo] = q; }
     done++;
-    document.getElementById('liveStatus').textContent = `Aggiornamento (${done}/${toFetch.length})…`;
-    if (done < toFetch.length) await new Promise(r => setTimeout(r, 500)); // rate-limit
+    document.getElementById('liveStatus').textContent = `Aggiornamento (${done}/${total})…`;
+    if (done < total) await new Promise(r => setTimeout(r, 500));
+  }
+
+  // ── BNP Paribas certificates ──────────────────────────────
+  for (const pos of toFetchBNP) {
+    const q = await scrapeBNPPrice(pos.isin);
+    if (q) { pm[pos.isin] = q; cache[pos.isin] = q; }
+    done++;
+    document.getElementById('liveStatus').textContent = `Aggiornamento (${done}/${total})…`;
+    if (done < total) await new Promise(r => setTimeout(r, 500));
   }
 
   savePriceCache(cache);
 
-  const fetched = live.filter(p => pm[p.yahoo]?.regularMarketPrice != null).length;
+  const fetchedYahoo = liveYahoo.filter(p => pm[p.yahoo]?.regularMarketPrice != null).length;
+  const fetchedBNP   = liveBNP.filter(p => pm[p.isin]?.regularMarketPrice != null).length;
+  const fetched = fetchedYahoo + fetchedBNP;
+  const allLive = liveYahoo.length + liveBNP.length;
+
   if (fetched > 0) {
     document.getElementById('liveDot').style.background = '#48bb78';
-    const partial = fetched < live.length ? ` (${fetched}/${live.length})` : '';
+    const partial = fetched < allLive ? ` (${fetched}/${allLive})` : '';
     document.getElementById('liveStatus').textContent = 'Live' + partial + ' · ' + new Date().toLocaleTimeString('it-IT');
     document.getElementById('lastUpdate').textContent = new Date().toLocaleString('it-IT');
   } else {
@@ -1390,7 +1451,8 @@ function renderTable(pm) {
 
   // ── Open positions ──
   for (const pos of positions) {
-    const q  = pos.yahoo ? pm[pos.yahoo] : null;
+    // Look up price: Yahoo symbol for stocks/ETF, ISIN for BNP certificates
+    const q  = pos.yahoo ? pm[pos.yahoo] : (pos.isin ? pm[pos.isin] : null);
     const lp = q?.regularMarketPrice ?? null;
     const ch = q?.regularMarketChange ?? null;
     const cp = q?.regularMarketChangePercent ?? null;
@@ -1408,18 +1470,26 @@ function renderTable(pm) {
     totalMkt  += posVal;
     const bc = pp==null?'#4a5568':pp>=0?'#48bb78':'#fc8181';
     const tc = pos.type==='Azione'?C.blue:pos.type==='ETF'?C.green:C.purple;
-    const yhUrl = pos.yahoo ? `https://finance.yahoo.com/quote/${pos.yahoo}/` : null;
+    // Link: Yahoo Finance for stocks/ETF, BNP Paribas for certificates
+    const yhUrl = pos.yahoo
+      ? `https://finance.yahoo.com/quote/${pos.yahoo}/`
+      : (pos.isin && pos.isin.startsWith('NLBNPIT')
+          ? `https://investimenti.bnpparibas.it/product-details/${pos.isin}/`
+          : null);
     rows += `<tr>
       <td style="white-space:nowrap">
-        ${yhUrl ? `<a class="ticker-badge" href="${yhUrl}" target="_blank" rel="noopener" title="Apri su Yahoo Finance">${pos.ticker}</a>` : `<span class="ticker-badge">${pos.ticker}</span>`}
+        ${yhUrl ? `<a class="ticker-badge" href="${yhUrl}" target="_blank" rel="noopener" title="${pos.yahoo?'Apri su Yahoo Finance':'Apri su BNP Paribas'}">${pos.ticker}</a>` : `<span class="ticker-badge">${pos.ticker}</span>`}
         <button onclick="openTickerModal('${pos.ticker}')" title="Dettaglio" style="background:none;border:none;cursor:pointer;color:#4a5568;padding:0 2px;font-size:.75rem;vertical-align:middle" onmouseover="this.style.color='#a0aec0'" onmouseout="this.style.color='#4a5568'">ℹ</button>
+        ${pos.isin?`<br><span style="font-size:.58rem;color:#4a5568;font-family:monospace;letter-spacing:.02em">${pos.isin}</span>`:''}
       </td>
       <td style="max-width:170px;overflow:hidden;text-overflow:ellipsis;cursor:pointer" onclick="openTickerModal('${pos.ticker}')" title="Apri dettaglio">${pos.desc||pos.ticker}</td>
       <td><span style="font-size:.7rem;color:${tc}">${pos.type}</span></td>
       <td style="text-align:right">${fmt(pos.shares,0)}</td>
       <td style="text-align:right;color:#a0aec0">€${fmt(pos.avgCost,4)}</td>
       <td style="text-align:right">${lp!=null
-        ? `<strong>€${fmt(lp,4)}</strong><br><span style="font-size:.68rem;color:${ch>=0?'#48bb78':'#fc8181'}">${ch>=0?'+':''}${fmt(ch,3)} (${fmt(cp,2)}%)</span>`
+        ? (q?.source==='bnp'
+            ? `<strong>€${fmt(lp,4)}</strong><br><span style="font-size:.68rem;color:${cp>=0?'#48bb78':'#fc8181'}">${cp!=null?(cp>=0?'+':'')+fmt(cp,2)+'%':''} <span style="color:#4a5568">mid</span></span>`
+            : `<strong>€${fmt(lp,4)}</strong><br><span style="font-size:.68rem;color:${ch>=0?'#48bb78':'#fc8181'}">${ch>=0?'+':''}${fmt(ch,3)} (${fmt(cp,2)}%)</span>`)
         : '<span class="cert-tag">N/D</span>'}</td>
       <td style="text-align:right">${mv!=null?`€${fmt(mv)}`:`<span style="color:#4a5568">€${fmt(pos.totalCost)}</span>`}</td>
       <td style="text-align:right">${weight!=null
@@ -1820,6 +1890,7 @@ function renderDivCalendar() {
   const tickers = [...tickerSet].sort();
   const mTot = new Array(13).fill(0); // 1-indexed
   let grandTotal = 0;
+  const isinMap = buildIsinMap();
 
   // Build body rows
   let tbody = '';
@@ -1839,8 +1910,12 @@ function renderDivCalendar() {
       }
     }
     if (rowTotal === 0) continue;
+    const isin = isinMap[t] || '';
     tbody += `<tr>
-      <td><span class="ticker-badge" style="cursor:default">${t}</span></td>
+      <td>
+        <span class="ticker-badge" style="cursor:default">${t}</span>
+        ${isin ? `<br><span style="font-size:.58rem;color:#4a5568;font-family:monospace">${isin}</span>` : ''}
+      </td>
       ${cells}
       <td class="col-total">€${fmt(rowTotal)}</td>
     </tr>`;
@@ -2067,6 +2142,94 @@ drop.addEventListener('drop', e => {
   drop.classList.remove('drag-over');
   loadFile(e.dataTransfer.files[0]);
 });
+</script>
+
+<!-- ══ DONATE MODAL ══ -->
+<div class="modal-overlay" id="donateModal" style="display:none" onclick="if(event.target===this)closeDonateModal()">
+  <div class="modal-box" style="max-width:400px;width:92%;padding:0;overflow:hidden;border-radius:14px;border:1px solid #1a4a7a">
+
+    <!-- PayPal header band -->
+    <div style="background:linear-gradient(135deg,#003087 0%,#009cde 100%);padding:22px 24px 18px;text-align:center;position:relative">
+      <button onclick="closeDonateModal()" style="position:absolute;top:10px;right:14px;background:rgba(255,255,255,.15);border:none;color:#fff;font-size:1.1rem;cursor:pointer;border-radius:50%;width:26px;height:26px;line-height:1;transition:background .15s" onmouseover="this.style.background='rgba(255,255,255,.3)'" onmouseout="this.style.background='rgba(255,255,255,.15)'">×</button>
+      <!-- PayPal logo SVG (ufficiale P+aypal wordmark in bianco) -->
+      <svg viewBox="0 0 124 33" xmlns="http://www.w3.org/2000/svg" style="height:26px;fill:#fff;margin-bottom:10px" aria-label="PayPal">
+        <path d="M46.2 8.3h-6.7c-.5 0-.9.3-1 .8l-2.7 17.1c-.1.4.2.7.6.7h3.2c.5 0 .9-.3 1-.8l.7-4.6c.1-.5.5-.8 1-.8h2.1c4.4 0 6.9-2.1 7.6-6.3.3-1.8 0-3.3-.8-4.3-.9-1.1-2.5-1.8-5-1.8zm.8 6.2c-.4 2.4-2.2 2.4-3.9 2.4h-1l.7-4.4c0-.3.3-.5.6-.5h.5c1.2 0 2.3 0 2.9.7.3.4.4 1 .2 1.8z"/>
+        <path d="M67.1 14.4h-3.2c-.3 0-.6.2-.6.5l-.2 1-.3-.4c-.8-1.2-2.7-1.6-4.5-1.6-4.2 0-7.8 3.2-8.5 7.6-.4 2.2.1 4.3 1.4 5.8 1.1 1.3 2.8 1.9 4.7 1.9 3.4 0 5.3-2.2 5.3-2.2l-.2 1c-.1.4.2.7.6.7h2.9c.5 0 .9-.3 1-.8l1.7-10.8c.1-.4-.2-.7-.1-.7zm-4.5 7.4c-.4 2.1-2 3.6-4.2 3.6-1.1 0-2-.4-2.5-1-.5-.7-.7-1.6-.5-2.6.3-2.1 2-3.6 4.2-3.6 1.1 0 2 .4 2.5 1 .5.7.7 1.6.5 2.6z"/>
+        <path d="M86.3 14.4h-3.2c-.3 0-.7.2-.8.5l-4.9 7.2-2.1-6.9c-.1-.4-.5-.7-1-.7h-3.2c-.4 0-.7.4-.6.8l3.9 11.5-3.7 5.2c-.3.4 0 .9.5.9h3.2c.3 0 .7-.2.8-.5l11.8-17c.4-.4.1-.9-.7-1z"/>
+        <path d="M96.9 8.3h-6.7c-.5 0-.9.3-1 .8l-2.7 17.1c-.1.4.2.7.6.7h3.4c.3 0 .6-.2.7-.6l.8-4.8c.1-.5.5-.8 1-.8h2.1c4.4 0 6.9-2.1 7.6-6.3.3-1.8 0-3.3-.8-4.3-.9-1.1-2.6-1.8-5-1.8zm.8 6.2c-.4 2.4-2.2 2.4-3.9 2.4h-1l.7-4.4c0-.3.3-.5.6-.5h.5c1.2 0 2.3 0 2.9.7.3.4.4 1 .2 1.8z"/>
+        <path d="M117.8 14.4h-3.2c-.3 0-.6.2-.6.5l-.2 1-.3-.4c-.8-1.2-2.7-1.6-4.5-1.6-4.2 0-7.8 3.2-8.5 7.6-.4 2.2.1 4.3 1.4 5.8 1.1 1.3 2.8 1.9 4.7 1.9 3.4 0 5.3-2.2 5.3-2.2l-.2 1c-.1.4.2.7.6.7h2.9c.5 0 .9-.3 1-.8l1.7-10.8c.1-.4-.2-.7-.1-.7zm-4.5 7.4c-.4 2.1-2 3.6-4.2 3.6-1.1 0-2-.4-2.5-1-.5-.7-.7-1.6-.5-2.6.3-2.1 2-3.6 4.2-3.6 1.1 0 2 .4 2.5 1 .5.7.7 1.6.5 2.6z"/>
+        <path d="M121.1 8.7l-2.7 17.4c-.1.4.2.7.6.7h2.8c.5 0 .9-.3 1-.8l2.7-17.1c.1-.4-.2-.7-.6-.7h-3.2c-.3-.1-.5.2-.6.5z"/>
+        <path d="M12.7 4.5C11.5 3.1 9.3 2.5 6.5 2.5H.6C.1 2.5-.3 2.9-.4 3.4L-3 20.6c-.1.4.2.8.6.8h4.7l1.2-7.4v.2c.1-.5.5-.8 1-.8h2.1c4.2 0 7.5-1.7 8.5-6.6 0-.2.1-.4.1-.6-.1-1.2-.6-2.3-3.5-1.7z" opacity=".5"/>
+        <path d="M14 5.9c-.1 0-.2-.1-.3-.1-.1 0-.2 0-.3-.1-.4-.1-.9-.1-1.4-.1H7.4c-.1 0-.3 0-.4.1-.3.1-.5.4-.5.7L5.3 14.2v.2c.1-.5.6-.9 1-.9h2.1c4.2 0 7.5-1.7 8.5-6.6 0-.2.1-.4.1-.6-.3-.2-.6-.3-3-1.4z"/>
+        <path d="M6.5 6.4c0-.3.2-.6.5-.7.1-.1.3-.1.4-.1H12c.5 0 .9.1 1.4.1.1 0 .2 0 .3.1.1 0 .2.1.3.1.1 0 .2.1.3.1 1.1.4 1.9 1 2.1 2.2 0 .2-.1.4-.1.6-1 4.9-4.3 6.6-8.5 6.6H5.7c-.5 0-.9.4-1 .9L3.5 23.4c0 .3.2.6.5.6h3.6c.4 0 .8-.3.9-.7v-.2l.7-4.5v-.2c.1-.4.5-.7.9-.7h.6c3.8 0 6.7-1.5 7.6-5.9.4-1.8.2-3.4-.7-4.4-.3-.4-.7-.7-1.1-1z"/>
+      </svg>
+      <div style="font-size:1rem;font-weight:700;color:#fff">Ti piace la web app?</div>
+      <div style="font-size:0.78rem;color:rgba(255,255,255,.75);margin-top:4px">Offrimi un caffè — ogni contributo è benvenuto ☕</div>
+    </div>
+
+    <!-- Body -->
+    <div style="padding:20px 24px;background:#0f1117">
+
+      <!-- "Invia ad un amico" tip -->
+      <div style="background:#1a2a1a;border:1px solid #276227;border-radius:8px;padding:10px 14px;margin-bottom:18px;display:flex;gap:10px;align-items:flex-start">
+        <span style="font-size:1.1rem;flex-shrink:0">💡</span>
+        <div>
+          <span style="color:#68d391;font-size:0.78rem;font-weight:700">Senza commissioni</span><br>
+          <span style="color:#9ae6b4;font-size:0.73rem;line-height:1.4">Su PayPal scegli <strong>"Invia ad un amico"</strong> invece di "Beni e servizi" — nessuna commissione per te né per me.</span>
+        </div>
+      </div>
+
+      <!-- 1€ quick button -->
+      <p style="color:#718096;font-size:0.7rem;margin:0 0 8px;text-transform:uppercase;letter-spacing:.06em">Offerta rapida</p>
+      <button onclick="donatePP(1)"
+        style="width:100%;padding:13px;margin-bottom:16px;background:linear-gradient(135deg,#0070ba,#009cde);border:none;border-radius:10px;color:#fff;font-size:1rem;font-weight:700;cursor:pointer;transition:opacity .15s;box-shadow:0 2px 12px rgba(0,112,186,.35)"
+        onmouseover="this.style.opacity='.88'" onmouseout="this.style.opacity='1'">
+        ☕ &nbsp;€1 — Un caffè
+      </button>
+
+      <!-- custom amount -->
+      <p style="color:#718096;font-size:0.7rem;margin:0 0 8px;text-transform:uppercase;letter-spacing:.06em">Importo personalizzato</p>
+      <div style="display:flex;gap:8px;align-items:center">
+        <span style="color:#718096;font-size:1.1rem;font-weight:700;flex-shrink:0">€</span>
+        <input id="donateAmt" type="number" min="2" max="100" value="5" step="1"
+          style="flex:1;background:#1e2332;border:1px solid #2d3748;border-radius:8px;color:#e2e8f0;padding:10px 12px;font-size:1rem;outline:none;transition:border-color .15s;-moz-appearance:textfield"
+          onkeydown="if(event.key==='Enter')donateCustom()"
+          onfocus="this.style.borderColor='#009cde'" onblur="this.style.borderColor='#2d3748'">
+        <button onclick="donateCustom()"
+          style="padding:10px 18px;background:linear-gradient(135deg,#0070ba,#009cde);border:none;border-radius:8px;color:#fff;font-size:0.9rem;font-weight:700;cursor:pointer;white-space:nowrap;transition:opacity .15s;box-shadow:0 2px 8px rgba(0,112,186,.3)"
+          onmouseover="this.style.opacity='.88'" onmouseout="this.style.opacity='1'">
+          Dona →
+        </button>
+      </div>
+      <p style="color:#4a5568;font-size:0.67rem;margin:6px 0 0;text-align:center">Min €2 · Max €100 — verrai reindirizzato su PayPal</p>
+
+      <!-- security strip -->
+      <div style="margin-top:18px;padding-top:14px;border-top:1px solid #1e2332;display:flex;align-items:center;justify-content:center;gap:10px">
+        <svg viewBox="0 0 24 24" style="width:14px;height:14px;fill:#4a5568" xmlns="http://www.w3.org/2000/svg"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm0 4l5 2.18V11c0 3.67-2.54 7.1-5 8.16C9.54 18.1 7 14.67 7 11V7.18L12 5z"/></svg>
+        <span style="color:#4a5568;font-size:0.68rem">Pagamento protetto da PayPal · Crittografia SSL</span>
+        <svg viewBox="0 0 24 24" style="width:14px;height:14px;fill:#4a5568" xmlns="http://www.w3.org/2000/svg"><path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z"/></svg>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+function openDonateModal()  { document.getElementById('donateModal').style.display='flex'; document.body.style.overflow='hidden'; }
+function closeDonateModal() { document.getElementById('donateModal').style.display='none'; document.body.style.overflow=''; }
+function donatePP(amount) {
+  window.open(`https://paypal.me/emax83dev/${amount}EUR`, '_blank', 'noopener');
+  closeDonateModal();
+}
+function donateCustom() {
+  const inp = document.getElementById('donateAmt');
+  const val = parseInt(inp.value, 10);
+  if (isNaN(val) || val < 2 || val > 100) {
+    inp.style.borderColor = '#fc8181';
+    inp.focus();
+    return;
+  }
+  donatePP(val);
+}
 </script>
 </body>
 </html>
