@@ -183,8 +183,9 @@ tbody td{padding:7px 7px;border-bottom:1px solid #1e2332;white-space:nowrap}
 @media(min-width:640px){tbody td{padding:8px 9px}}
 tbody tr:last-child td{border-bottom:none}
 tbody tr:hover{background:#1e2540}
-.ticker-badge{display:inline-block;background:#1e3252;color:#63b3ed;border-radius:4px;padding:2px 5px;font-size:0.68rem;font-weight:600}
+.ticker-badge{display:inline-block;background:#1e3252;color:#63b3ed;border-radius:4px;padding:2px 5px;font-size:0.68rem;font-weight:600;text-decoration:none;transition:background .15s}
 @media(min-width:640px){.ticker-badge{padding:2px 6px;font-size:0.73rem}}
+a.ticker-badge:hover{background:#2b6cb0;color:#fff}
 .gain-bar{display:flex;align-items:center;gap:4px}
 .bar-bg{width:36px;background:#2d3748;border-radius:2px;height:4px}
 @media(min-width:640px){.bar-bg{width:55px}}
@@ -516,6 +517,15 @@ tbody tr:hover{background:#1e2540}
 
 <script>
 // ════════════════════════════════════════════════
+// ════════════════════════════════════════════════
+// TICKER ALIASES — vecchio ticker → nuovo ticker canonico
+// Usato quando Directa rinomina un titolo nel tempo
+// ════════════════════════════════════════════════
+const TICKER_ALIASES = {
+  'USOPA': 'US',   // UnipolSai: rinominato da US a USOPA dopo fusione
+};
+
+// ════════════════════════════════════════════════
 // TICKER META — yahoo symbol, type, sector, geo
 // ════════════════════════════════════════════════
 const TMETA = {
@@ -680,7 +690,13 @@ function parseCSV(text) {
 // ════════════════════════════════════════════════
 function buildPositions(rows) {
   // Sort ascending — CSV is newest-first; sells must come after buys chronologically
-  const sorted = [...rows].sort((a, b) => a.date - b.date);
+  // Secondary sort: same date → BUY before SELL (handles same-day round-trips)
+  const CAT_ORDER = {BUY: 0, SELL: 1};
+  const sorted = [...rows].sort((a, b) => {
+    const dt = a.date - b.date;
+    if (dt !== 0) return dt;
+    return (CAT_ORDER[a.cat] ?? 2) - (CAT_ORDER[b.cat] ?? 2);
+  });
 
   const live  = {};   // current avg-cost tracking
   const hist  = {};   // all-time per-ticker totals (for closed positions display)
@@ -688,7 +704,8 @@ function buildPositions(rows) {
 
   for (const r of sorted) {
     if (!['BUY','SELL'].includes(r.cat)) continue;
-    const t = r.ticker; if (!t) continue;
+    // Normalize ticker aliases (e.g. USOPA → US after corporate rename)
+    const t = TICKER_ALIASES[r.ticker] || r.ticker; if (!t) continue;
     const m = TMETA[t] || {};
     const meta = {
       ticker: t,
@@ -1192,8 +1209,11 @@ function renderTable(pm) {
     totalMkt  += mv ?? pos.totalCost;
     const bc = pp==null?'#4a5568':pp>=0?'#48bb78':'#fc8181';
     const tc = pos.type==='Azione'?C.blue:pos.type==='ETF'?C.green:C.purple;
+    const yhUrl = pos.yahoo ? `https://finance.yahoo.com/quote/${pos.yahoo}/` : null;
     rows += `<tr>
-      <td><span class="ticker-badge">${pos.ticker}</span></td>
+      <td>${yhUrl
+        ? `<a class="ticker-badge" href="${yhUrl}" target="_blank" rel="noopener" title="Apri su Yahoo Finance">${pos.ticker}</a>`
+        : `<span class="ticker-badge">${pos.ticker}</span>`}</td>
       <td style="max-width:170px;overflow:hidden;text-overflow:ellipsis">${pos.desc||pos.ticker}</td>
       <td><span style="font-size:.7rem;color:${tc}">${pos.type}</span></td>
       <td style="text-align:right">${fmt(pos.shares,0)}</td>
@@ -1229,8 +1249,11 @@ function renderTable(pm) {
   for (const c of closed) {
     const plColor = c.realizedPL >= 0 ? '#48bb78' : '#fc8181';
     const barW = Math.min(Math.abs(c.realizedPLpct), 100);
+    const cYhUrl = c.yahoo ? `https://finance.yahoo.com/quote/${c.yahoo}/` : null;
     rows += `<tr class="row-closed">
-      <td><span class="ticker-badge">${c.ticker}</span></td>
+      <td>${cYhUrl
+        ? `<a class="ticker-badge" href="${cYhUrl}" target="_blank" rel="noopener" title="Apri su Yahoo Finance">${c.ticker}</a>`
+        : `<span class="ticker-badge">${c.ticker}</span>`}</td>
       <td style="max-width:170px;overflow:hidden;text-overflow:ellipsis">
         ${c.desc||c.ticker} <span style="font-size:.65rem;background:#1e2332;border-radius:3px;padding:1px 4px;margin-left:3px">CHIUSA</span>
       </td>
