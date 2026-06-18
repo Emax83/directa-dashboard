@@ -209,6 +209,22 @@ a.ticker-badge:hover{background:#2b6cb0;color:#fff}
 .green{color:#48bb78}.red{color:#fc8181}.blue{color:#63b3ed}.purple{color:#b794f4}
 .yellow{color:#f6e05e}.teal{color:#4fd1c5}.orange{color:#f6ad55}
 
+/* ── DIVIDEND CALENDAR ── */
+.div-cal-scroll{max-height:360px;overflow-y:auto;overflow-x:auto;-webkit-overflow-scrolling:touch}
+.div-cal{width:100%;border-collapse:collapse;font-size:0.74rem;min-width:760px}
+.div-cal th{background:#1a1d2e;padding:6px 9px;font-size:0.69rem;font-weight:600;color:#a0aec0;white-space:nowrap}
+.div-cal th:first-child,.div-cal td:first-child{position:sticky;left:0;z-index:2;background:#0f1117;min-width:80px;padding-left:4px}
+.div-cal thead th:first-child{background:#1a1d2e;z-index:3}
+.div-cal tfoot td{background:#1a1d2e;font-weight:700}
+.div-cal tfoot td:first-child{background:#1a1d2e}
+.div-cal td{padding:5px 9px;border-bottom:1px solid #1a1d2e}
+.div-cal tbody tr:hover td{background:#161929}
+.div-cal tbody tr:hover td:first-child{background:#1a1d2e}
+.div-cal .cell-past{text-align:right;color:#68d391;font-variant-numeric:tabular-nums}
+.div-cal .cell-future{text-align:right;color:#718096;font-style:italic;font-variant-numeric:tabular-nums}
+.div-cal .cell-empty{text-align:right;color:#2d3748}
+.div-cal .col-total{text-align:right;color:#f6e05e;font-weight:600}
+
 /* ── LIVE TABLE SCROLL + SEARCH ── */
 .live-table-scroll{max-height:380px;overflow-y:auto;overflow-x:auto}
 .live-table-scroll thead th{position:sticky;top:0;background:#1a1d2e;z-index:2;box-shadow:0 1px 0 #2d3748}
@@ -385,6 +401,14 @@ a.ticker-badge:hover{background:#2b6cb0;color:#fff}
     <div class="card">
       <h3 class="section-title">Costi e Oneri (€)</h3>
       <div class="chart-wrap" style="height:190px"><canvas id="costsChart"></canvas></div>
+    </div>
+  </div>
+
+  <!-- DIVIDEND CALENDAR -->
+  <div class="card">
+    <h3 class="section-title">📅 Calendario Dividendi &amp; Cedole</h3>
+    <div id="divCalendar">
+      <p style="color:#4a5568;font-size:0.85rem;text-align:center;padding:20px">Carica il CSV per vedere il calendario.</p>
     </div>
   </div>
 
@@ -949,6 +973,7 @@ function updateDynCharts() {
   makeDynChart('chartPortfolio', s.portData, s.labels, C.teal);
   makeDynChart('chartIncome',    s.incData,  s.labels, C.green);
   makeDynChart('chartDeposits',  s.depData,  s.labels, C.blue);
+  renderDivCalendar();
 }
 
 function fmt(n,d=2){return n.toLocaleString('it-IT',{minimumFractionDigits:d,maximumFractionDigits:d})}
@@ -1148,43 +1173,137 @@ function fillCoupons(data) {
 }
 
 // ════════════════════════════════════════════════
-// LIVE PRICES
+// LIVE PRICES  (3-tier: v7 batch → v8 chart → HTML scrape)
 // ════════════════════════════════════════════════
 const PROXIES = [
   u => `https://corsproxy.io/?${encodeURIComponent(u)}`,
   u => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`,
 ];
-async function fetchWithProxy(url) {
+
+/** Fetch URL via CORS proxy → parse as JSON */
+async function fetchJsonProxy(url) {
   for (const p of PROXIES) {
     try {
-      const r = await fetch(p(url), {signal:AbortSignal.timeout(8000)});
+      const r = await fetch(p(url), {signal:AbortSignal.timeout(9000)});
       if (r.ok) return await r.json();
     } catch(e) {}
   }
-  throw new Error('Proxy non raggiungibile');
+  return null;
+}
+
+/** Fetch URL via CORS proxy → return raw text */
+async function fetchTextProxy(url) {
+  for (const p of PROXIES) {
+    try {
+      const r = await fetch(p(url), {signal:AbortSignal.timeout(12000)});
+      if (r.ok) return await r.text();
+    } catch(e) {}
+  }
+  return null;
+}
+
+/**
+ * Tier 2 — Yahoo Finance v8 chart API (JSON, single symbol).
+ * Endpoint: query1.finance.yahoo.com/v8/finance/chart/{sym}?interval=1d&range=1d
+ */
+async function fetchViaV8(sym) {
+  try {
+    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${sym}?interval=1d&range=1d`;
+    const data = await fetchJsonProxy(url);
+    const meta = data?.chart?.result?.[0]?.meta;
+    if (meta?.regularMarketPrice != null) {
+      const prev = meta.chartPreviousClose || meta.regularMarketPrice;
+      const ch   = meta.regularMarketPrice - prev;
+      return {
+        regularMarketPrice:         meta.regularMarketPrice,
+        regularMarketChange:        ch,
+        regularMarketChangePercent: prev > 0 ? (ch / prev) * 100 : 0,
+      };
+    }
+  } catch(e) {}
+  return null;
+}
+
+/**
+ * Tier 3 — HTML scrape of yahoo finance quote page.
+ * Looks for:
+ *   data-testid="qsp-price"          (current price span)
+ *   data-testid="qsp-price-change"   (change)
+ *   "regularMarketPrice":{"raw":NNN  (embedded JSON fallback)
+ */
+async function fetchViaScrape(sym) {
+  try {
+    const html = await fetchTextProxy(`https://finance.yahoo.com/quote/${sym}/`);
+    if (!html) return null;
+
+    // Primary: data-testid attributes
+    const mPrice = html.match(/data-testid="qsp-price"[^>]*>\s*([\d.,]+)/);
+    const mChg   = html.match(/data-testid="qsp-price-change"[^>]*>\s*([+-]?[\d.,]+)/);
+    // value format: "(+1.06%)" or "-1.06%"
+    const mChgP  = html.match(/data-testid="qsp-price-change-percent"[^>]*>\s*\(?([+-]?[\d.,]+)%/);
+
+    if (mPrice) {
+      const price = parseFloat(mPrice[1].replace(',', '.'));
+      if (!isNaN(price)) return {
+        regularMarketPrice:         price,
+        regularMarketChange:        mChg  ? parseFloat(mChg[1].replace(',','.'))  : null,
+        regularMarketChangePercent: mChgP ? parseFloat(mChgP[1].replace(',','.')) : null,
+      };
+    }
+
+    // Fallback: embedded JSON blob (SSR hydration data)
+    const mJson = html.match(/"regularMarketPrice":\{"raw":([\d.]+)/);
+    const mChJ  = html.match(/"regularMarketChange":\{"raw":([+-]?[\d.]+)/);
+    const mChPJ = html.match(/"regularMarketChangePercent":\{"raw":([+-]?[\d.]+)/);
+    if (mJson) {
+      return {
+        regularMarketPrice:         parseFloat(mJson[1]),
+        regularMarketChange:        mChJ  ? parseFloat(mChJ[1])  : null,
+        regularMarketChangePercent: mChPJ ? parseFloat(mChPJ[1]) : null,
+      };
+    }
+  } catch(e) {}
+  return null;
 }
 
 async function fetchPrices() {
   const positions = G.positions || [];
   const live = positions.filter(p => p.yahoo);
   if (!live.length) return;
-  const syms = live.map(p=>p.yahoo).join(',');
-  const yUrl = `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${syms}&fields=regularMarketPrice,regularMarketChange,regularMarketChangePercent`;
+
   document.getElementById('liveTable').innerHTML =
     `<tr class="loading-row"><td colspan="10"><span class="spinner"></span>Recupero prezzi…</td></tr>`;
   document.getElementById('errorBox').innerHTML = '';
   document.getElementById('liveDot').style.background = '#f6ad55';
   document.getElementById('liveStatus').textContent = 'Aggiornamento…';
+
   let pm = {};
-  try {
-    const data = await fetchWithProxy(yUrl);
-    (data?.quoteResponse?.result||[]).forEach(q => { pm[q.symbol] = q; });
+
+  // ── Tier 1: v7 batch API ──────────────────────────────────
+  const syms = live.map(p => p.yahoo).join(',');
+  const yUrl = `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${syms}&fields=regularMarketPrice,regularMarketChange,regularMarketChangePercent`;
+  const batchData = await fetchJsonProxy(yUrl);
+  (batchData?.quoteResponse?.result || []).forEach(q => { pm[q.symbol] = q; });
+
+  // ── Tier 2 + 3: individual fallback for missing tickers ──
+  const missing = live.filter(p => !pm[p.yahoo]);
+  if (missing.length) {
+    await Promise.allSettled(missing.map(async (pos) => {
+      // try v8 chart API first, then HTML scrape
+      const q = (await fetchViaV8(pos.yahoo)) || (await fetchViaScrape(pos.yahoo));
+      if (q) pm[pos.yahoo] = q;
+    }));
+  }
+
+  const fetched = Object.keys(pm).length;
+  if (fetched > 0) {
     document.getElementById('liveDot').style.background = '#48bb78';
-    document.getElementById('liveStatus').textContent = 'Live · '+new Date().toLocaleTimeString('it-IT');
+    const partial = fetched < live.length ? ` (${fetched}/${live.length})` : '';
+    document.getElementById('liveStatus').textContent = 'Live' + partial + ' · ' + new Date().toLocaleTimeString('it-IT');
     document.getElementById('lastUpdate').textContent = new Date().toLocaleString('it-IT');
-  } catch(e) {
+  } else {
     document.getElementById('errorBox').innerHTML =
-      `<div class="error-msg">⚠️ Impossibile recuperare prezzi: ${e.message}</div>`;
+      `<div class="error-msg">⚠️ Impossibile recuperare prezzi — tutti i proxy non raggiungibili</div>`;
     document.getElementById('liveDot').style.background = '#fc8181';
     document.getElementById('liveStatus').textContent = 'Errore connessione';
   }
@@ -1337,6 +1456,127 @@ function renderRealizedPL(byYear) {
 // ════════════════════════════════════════════════
 // MAIN RENDER
 // ════════════════════════════════════════════════
+// ════════════════════════════════════════════════
+// DIVIDEND CALENDAR
+// ════════════════════════════════════════════════
+function renderDivCalendar() {
+  const el = document.getElementById('divCalendar');
+  if (!el || !G.rows) return;
+
+  const rows = G.rows;
+  const sel  = selectedYear; // 'tutto' or '2023' etc.
+
+  if (sel === 'tutto') {
+    el.innerHTML = '<p style="color:#4a5568;font-size:0.85rem;text-align:center;padding:20px">Seleziona un anno specifico per visualizzare il calendario dividendi.</p>';
+    return;
+  }
+
+  const INC = ['DIVIDEND','ETF_INCOME','COUPON'];
+  const today   = new Date();
+  const nowYear  = today.getFullYear();
+  const nowMonth = today.getMonth() + 1; // 1-12
+  const yr    = parseInt(sel);
+  const prevYr = yr - 1;
+
+  // A month is "future" if it hasn't happened yet in the selected year
+  const isFuture = m => yr > nowYear || (yr === nowYear && m > nowMonth);
+
+  // Build data maps: ticker -> { month: amount }
+  const curData  = {};
+  const prevData = {};
+  for (const r of rows) {
+    if (!INC.includes(r.cat)) continue;
+    const ticker = TICKER_ALIASES[r.ticker] || r.ticker;
+    if (!ticker) continue;
+    const ry = r.date.getFullYear();
+    const rm = r.date.getMonth() + 1;
+    const amt = Math.abs(r.amount);
+    if (ry === yr)     { if (!curData[ticker])  curData[ticker]  = {}; curData[ticker][rm]  = (curData[ticker][rm]  || 0) + amt; }
+    if (ry === prevYr) { if (!prevData[ticker]) prevData[ticker] = {}; prevData[ticker][rm] = (prevData[ticker][rm] || 0) + amt; }
+  }
+
+  // Tickers: present this year OR in prev year for any future month
+  const tickerSet = new Set(Object.keys(curData));
+  for (const [t, mMap] of Object.entries(prevData)) {
+    for (const m of Object.keys(mMap)) {
+      if (isFuture(parseInt(m))) { tickerSet.add(t); break; }
+    }
+  }
+
+  if (!tickerSet.size) {
+    el.innerHTML = `<p style="color:#4a5568;font-size:0.85rem;text-align:center;padding:20px">Nessun reddito registrato per il ${yr}.</p>`;
+    return;
+  }
+
+  const MONTHS_SHORT = ['Gen','Feb','Mar','Apr','Mag','Giu','Lug','Ago','Set','Ott','Nov','Dic'];
+  const tickers = [...tickerSet].sort();
+  const mTot = new Array(13).fill(0); // 1-indexed
+  let grandTotal = 0;
+
+  // Build body rows
+  let tbody = '';
+  for (const t of tickers) {
+    let rowTotal = 0;
+    let cells = '';
+    for (let m = 1; m <= 12; m++) {
+      const fut = isFuture(m);
+      const amt = fut ? (prevData[t]?.[m] || 0) : (curData[t]?.[m] || 0);
+      rowTotal   += amt;
+      mTot[m]    += amt;
+      grandTotal += amt;
+      if (amt > 0) {
+        cells += `<td class="${fut ? 'cell-future' : 'cell-past'}">${fut ? '~' : ''}€${fmt(amt)}</td>`;
+      } else {
+        cells += `<td class="cell-empty">—</td>`;
+      }
+    }
+    if (rowTotal === 0) continue;
+    tbody += `<tr>
+      <td><span class="ticker-badge" style="cursor:default">${t}</span></td>
+      ${cells}
+      <td class="col-total">€${fmt(rowTotal)}</td>
+    </tr>`;
+  }
+
+  // Header: mark future months
+  const thCols = MONTHS_SHORT.map((name, i) => {
+    const m = i + 1, fut = isFuture(m);
+    return `<th style="text-align:right${fut ? ';color:#4a5568;font-style:italic' : ''}">${name}${fut ? '*' : ''}</th>`;
+  }).join('');
+
+  // Footer totals
+  const tfCols = Array.from({length:12}, (_, i) => {
+    const m = i + 1, v = mTot[m], fut = isFuture(m);
+    if (v > 0) return `<td style="text-align:right;color:${fut ? '#718096' : '#f6ad55'};font-weight:700">${fut ? '~' : ''}€${fmt(v)}</td>`;
+    return `<td style="text-align:right;color:#2d3748">—</td>`;
+  }).join('');
+
+  const note = yr >= nowYear
+    ? `<p style="color:#4a5568;font-size:0.69rem;margin-top:6px">* Mesi futuri: stima basata sui pagamenti ${prevYr}</p>`
+    : '';
+
+  el.innerHTML = `
+    <div class="div-cal-scroll">
+      <table class="div-cal">
+        <thead>
+          <tr>
+            <th>Ticker</th>${thCols}
+            <th style="text-align:right;color:#f6e05e">Totale</th>
+          </tr>
+        </thead>
+        <tbody>${tbody}</tbody>
+        <tfoot>
+          <tr>
+            <td style="color:#a0aec0;font-size:0.7rem">TOTALE</td>
+            ${tfCols}
+            <td style="text-align:right;color:#f6e05e;font-weight:700">€${fmt(grandTotal)}</td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+    ${note}`;
+}
+
 function renderDashboard(rows) {
   const {open, closed, realized} = buildPositions(rows);
   const monthly   = buildMonthly(rows);
@@ -1367,6 +1607,7 @@ function renderDashboard(rows) {
   fillRank('etfTable', payers.etf, C.green);
   fillCoupons(payers.coup);
   renderRealizedPL(realizedByYear);
+  renderDivCalendar();
 
   // Show dashboard
   document.getElementById('uploadZone').style.display = 'none';
