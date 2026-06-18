@@ -209,6 +209,21 @@ a.ticker-badge:hover{background:#2b6cb0;color:#fff}
 .green{color:#48bb78}.red{color:#fc8181}.blue{color:#63b3ed}.purple{color:#b794f4}
 .yellow{color:#f6e05e}.teal{color:#4fd1c5}.orange{color:#f6ad55}
 
+/* ── TICKER DETAIL MODAL ── */
+.ticker-detail-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:14px 0}
+.ticker-kpi{background:#0f1117;border-radius:8px;padding:10px 12px;border:1px solid #2d3748}
+.ticker-kpi .lbl{font-size:0.68rem;color:#4a5568;text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px}
+.ticker-kpi .val{font-size:1rem;font-weight:700;color:#e2e8f0}
+.ticker-kpi .sub{font-size:0.68rem;color:#718096;margin-top:2px}
+.ticker-inc-row{display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid #1e2332;font-size:0.8rem}
+.ticker-inc-row:last-child{border-bottom:none}
+
+/* ── MINUSVALENZE SCADENZA BADGES ── */
+.minus-badge{display:inline-block;border-radius:4px;padding:2px 8px;font-size:0.68rem;font-weight:700;white-space:nowrap}
+.minus-badge.active{background:#1a3a2a;color:#68d391;border:1px solid #276749}
+.minus-badge.warning{background:#3a2a0a;color:#f6ad55;border:1px solid #7b5c14}
+.minus-badge.expired{background:#1e2332;color:#4a5568;border:1px solid #2d3748}
+
 /* ── DIVIDEND CALENDAR ── */
 .div-cal-scroll{max-height:360px;overflow-y:auto;overflow-x:auto;-webkit-overflow-scrolling:touch}
 .div-cal{width:100%;border-collapse:collapse;font-size:0.74rem;min-width:760px}
@@ -438,13 +453,16 @@ a.ticker-badge:hover{background:#2b6cb0;color:#fff}
             <th style="text-align:right">Prezzo Medio</th>
             <th style="text-align:right">Prezzo Live</th>
             <th style="text-align:right">Valore (€)</th>
+            <th style="text-align:right">Peso %</th>
             <th style="text-align:right">P&amp;L (€)</th>
             <th style="text-align:right">P&amp;L %</th>
+            <th style="text-align:right" title="P&L + dividendi/cedole ricevute">Total Return</th>
+            <th style="text-align:right" title="Reddito ricevuto / prezzo medio carico">YoC %</th>
             <th>Barra</th>
           </tr>
         </thead>
         <tbody id="liveTable">
-          <tr class="loading-row"><td colspan="10">Carica il CSV per vedere le posizioni</td></tr>
+          <tr class="loading-row"><td colspan="13">Carica il CSV per vedere le posizioni</td></tr>
         </tbody>
       </table>
     </div>
@@ -476,6 +494,31 @@ a.ticker-badge:hover{background:#2b6cb0;color:#fff}
     </div>
   </div>
 
+  <!-- SCADENZA MINUSVALENZE -->
+  <div class="card" id="minusvCard" style="display:none">
+    <h3 class="section-title">⏳ Scadenza Minusvalenze</h3>
+    <p style="font-size:0.75rem;color:#4a5568;margin-bottom:14px">
+      In regime di risparmio amministrato le minusvalenze si compensano con plusvalenze entro <strong style="color:#718096">4 anni</strong>.
+      Directa applica la compensazione automaticamente in ordine FIFO.
+    </p>
+    <div style="overflow-x:auto">
+      <table>
+        <thead>
+          <tr>
+            <th>Anno perdita</th>
+            <th style="text-align:right">Minusvalenze</th>
+            <th style="text-align:right">Plusvalenze anno</th>
+            <th style="text-align:right">Netto anno</th>
+            <th style="text-align:center">Scade il</th>
+            <th style="text-align:center">Status</th>
+          </tr>
+        </thead>
+        <tbody id="minusvTable"></tbody>
+      </table>
+    </div>
+    <div style="margin-top:12px;padding:10px 12px;background:#0f1117;border-radius:6px;border-left:3px solid #f6ad55" id="minusvSummary"></div>
+  </div>
+
 </div><!-- /container -->
 </div><!-- /dashboard -->
 
@@ -486,6 +529,14 @@ a.ticker-badge:hover{background:#2b6cb0;color:#fff}
     <a href="#" onclick="openPrivacyModal();return false;">Termini e condizioni & Privacy Policy</a>
   </span>
 </footer>
+
+<!-- ══ TICKER DETAIL MODAL ══ -->
+<div class="modal-overlay" id="tickerModal" style="display:none" onclick="if(event.target===this)closeTickerModal()">
+  <div class="modal-box" style="max-width:560px;width:94%">
+    <button class="modal-close" onclick="closeTickerModal()">✕</button>
+    <div id="tickerModalContent"></div>
+  </div>
+</div>
 
 <!-- ══ PRIVACY MODAL ══ -->
 <div class="modal-overlay" id="privacyModal" style="display:none" onclick="if(event.target===this)closePrivacyModal()">
@@ -1272,7 +1323,7 @@ async function fetchPrices() {
   if (!live.length) return;
 
   document.getElementById('liveTable').innerHTML =
-    `<tr class="loading-row"><td colspan="10"><span class="spinner"></span>Recupero prezzi…</td></tr>`;
+    `<tr class="loading-row"><td colspan="13"><span class="spinner"></span>Recupero prezzi…</td></tr>`;
   document.getElementById('errorBox').innerHTML = '';
   document.getElementById('liveDot').style.background = '#f6ad55';
   document.getElementById('liveStatus').textContent = 'Aggiornamento…';
@@ -1311,9 +1362,32 @@ async function fetchPrices() {
 }
 
 function renderTable(pm) {
+  G._lastPm = pm; // save for modal
   const positions = G.positions || [];
   const closed    = G.closedPositions || [];
   let totalCost=0, totalMkt=0, rows='';
+
+  // ── Pre-compute income per ticker (for Total Return & YoC) ──
+  const INC_CATS = ['DIVIDEND','ETF_INCOME','COUPON'];
+  const incomeByTicker = {};
+  for (const r of G.rows||[]) {
+    if (!INC_CATS.includes(r.cat)) continue;
+    const t = TICKER_ALIASES[r.ticker]||r.ticker; if (!t) continue;
+    incomeByTicker[t] = (incomeByTicker[t]||0) + Math.abs(r.amount);
+  }
+
+  // ── Pre-calculate total market value for weight column ──
+  for (const pos of positions) {
+    const q  = pos.yahoo ? pm[pos.yahoo] : null;
+    const lp = q?.regularMarketPrice ?? null;
+    const mv = lp != null ? lp * pos.shares : null;
+    totalMkt += mv ?? pos.totalCost;
+    totalCost += pos.totalCost;
+  }
+  // Reset for second pass
+  totalCost = 0;
+  let totalMktFinal = totalMkt;
+  totalMkt = 0;
 
   // ── Open positions ──
   for (const pos of positions) {
@@ -1324,16 +1398,23 @@ function renderTable(pm) {
     const mv = lp != null ? lp * pos.shares : null;
     const pl = mv != null ? mv - pos.totalCost : null;
     const pp = pl != null ? (pl/pos.totalCost)*100 : null;
+    const posVal  = mv ?? pos.totalCost;
+    const weight  = totalMktFinal > 0 ? (posVal / totalMktFinal) * 100 : null;
+    const inc     = incomeByTicker[pos.ticker] || 0;
+    const tr      = (pl ?? 0) + inc; // Total Return = P&L latente + reddito
+    const trPct   = pos.totalCost > 0 ? (tr / pos.totalCost) * 100 : null;
+    const yoc     = pos.totalCost > 0 && inc > 0 ? (inc / pos.totalCost) * 100 : null;
     totalCost += pos.totalCost;
-    totalMkt  += mv ?? pos.totalCost;
+    totalMkt  += posVal;
     const bc = pp==null?'#4a5568':pp>=0?'#48bb78':'#fc8181';
     const tc = pos.type==='Azione'?C.blue:pos.type==='ETF'?C.green:C.purple;
     const yhUrl = pos.yahoo ? `https://finance.yahoo.com/quote/${pos.yahoo}/` : null;
     rows += `<tr>
-      <td>${yhUrl
-        ? `<a class="ticker-badge" href="${yhUrl}" target="_blank" rel="noopener" title="Apri su Yahoo Finance">${pos.ticker}</a>`
-        : `<span class="ticker-badge">${pos.ticker}</span>`}</td>
-      <td style="max-width:170px;overflow:hidden;text-overflow:ellipsis">${pos.desc||pos.ticker}</td>
+      <td style="white-space:nowrap">
+        ${yhUrl ? `<a class="ticker-badge" href="${yhUrl}" target="_blank" rel="noopener" title="Apri su Yahoo Finance">${pos.ticker}</a>` : `<span class="ticker-badge">${pos.ticker}</span>`}
+        <button onclick="openTickerModal('${pos.ticker}')" title="Dettaglio" style="background:none;border:none;cursor:pointer;color:#4a5568;padding:0 2px;font-size:.75rem;vertical-align:middle" onmouseover="this.style.color='#a0aec0'" onmouseout="this.style.color='#4a5568'">ℹ</button>
+      </td>
+      <td style="max-width:170px;overflow:hidden;text-overflow:ellipsis;cursor:pointer" onclick="openTickerModal('${pos.ticker}')" title="Apri dettaglio">${pos.desc||pos.ticker}</td>
       <td><span style="font-size:.7rem;color:${tc}">${pos.type}</span></td>
       <td style="text-align:right">${fmt(pos.shares,0)}</td>
       <td style="text-align:right;color:#a0aec0">€${fmt(pos.avgCost,4)}</td>
@@ -1341,8 +1422,13 @@ function renderTable(pm) {
         ? `<strong>€${fmt(lp,4)}</strong><br><span style="font-size:.68rem;color:${ch>=0?'#48bb78':'#fc8181'}">${ch>=0?'+':''}${fmt(ch,3)} (${fmt(cp,2)}%)</span>`
         : '<span class="cert-tag">N/D</span>'}</td>
       <td style="text-align:right">${mv!=null?`€${fmt(mv)}`:`<span style="color:#4a5568">€${fmt(pos.totalCost)}</span>`}</td>
+      <td style="text-align:right">${weight!=null
+        ? `<span style="color:#b794f4;font-size:.8rem">${fmt(weight,1)}%</span><div style="margin-top:2px;height:3px;border-radius:2px;background:#2d3748;width:54px"><div style="height:3px;border-radius:2px;background:#b794f4;width:${Math.min(weight,100)}%"></div></div>`
+        : '—'}</td>
       <td style="text-align:right">${pl!=null?`<span class="${pl>=0?'green':'red'}">${pl>=0?'+':'-'}€${fmt(Math.abs(pl))}</span>`:'<span style="color:#4a5568">—</span>'}</td>
       <td style="text-align:right">${pp!=null?`<span class="${pp>=0?'green':'red'}">${pp>=0?'+':''}${fmt(pp)}%</span>`:'<span style="color:#4a5568">—</span>'}</td>
+      <td style="text-align:right">${trPct!=null?`<span class="${tr>=0?'green':'red'}" style="font-weight:600">${tr>=0?'+':'-'}€${fmt(Math.abs(tr))}</span><br><span style="font-size:.68rem;color:${tr>=0?'#48bb78':'#fc8181'}">${trPct>=0?'+':''}${fmt(trPct)}%</span>`:'<span style="color:#4a5568">—</span>'}</td>
+      <td style="text-align:right">${yoc!=null?`<span style="color:#f6ad55;font-size:.82rem">${fmt(yoc,2)}%</span>`:'<span style="color:#4a5568">—</span>'}</td>
       <td style="width:75px"><div class="gain-bar"><div class="bar-bg"><div class="bar-fill" style="width:${pp!=null?Math.min(Math.abs(pp),100):0}%;background:${bc}"></div></div><span style="font-size:.68rem;color:${bc}">${pp!=null?(pp>=0?'+':'')+fmt(pp,1)+'%':'—'}</span></div></td>
     </tr>`;
   }
@@ -1353,13 +1439,15 @@ function renderTable(pm) {
     <td colspan="3"><strong>TOTALE APERTE</strong></td><td></td>
     <td style="text-align:right"><strong>€${fmt(totalCost)}</strong></td><td></td>
     <td style="text-align:right"><strong class="teal">€${fmt(totalMkt)}</strong></td>
+    <td style="text-align:right;color:#f6e05e;font-size:.75rem;font-weight:700">100%</td>
     <td style="text-align:right"><span class="${tpl>=0?'green':'red'}">${tpl>=0?'+':'-'}€${fmt(Math.abs(tpl))}</span></td>
-    <td style="text-align:right"><span class="${tpp>=0?'green':'red'}">${tpp>=0?'+':''}${fmt(tpp)}%</span></td><td></td>
+    <td style="text-align:right"><span class="${tpp>=0?'green':'red'}">${tpp>=0?'+':''}${fmt(tpp)}%</span></td>
+    <td></td><td></td><td></td>
   </tr>`;
 
   // ── Separator ──
   if (closed.length) {
-    rows += `<tr><td colspan="10" style="padding:6px 9px;font-size:0.7rem;color:#4a5568;background:#0f1117;letter-spacing:.05em;text-transform:uppercase">
+    rows += `<tr><td colspan="13" style="padding:6px 9px;font-size:0.7rem;color:#4a5568;background:#0f1117;letter-spacing:.05em;text-transform:uppercase">
       — Posizioni chiuse (${closed.length}) —
     </td></tr>`;
   }
@@ -1370,10 +1458,11 @@ function renderTable(pm) {
     const barW = Math.min(Math.abs(c.realizedPLpct), 100);
     const cYhUrl = c.yahoo ? `https://finance.yahoo.com/quote/${c.yahoo}/` : null;
     rows += `<tr class="row-closed">
-      <td>${cYhUrl
-        ? `<a class="ticker-badge" href="${cYhUrl}" target="_blank" rel="noopener" title="Apri su Yahoo Finance">${c.ticker}</a>`
-        : `<span class="ticker-badge">${c.ticker}</span>`}</td>
-      <td style="max-width:170px;overflow:hidden;text-overflow:ellipsis">
+      <td style="white-space:nowrap">
+        ${cYhUrl ? `<a class="ticker-badge" href="${cYhUrl}" target="_blank" rel="noopener" title="Apri su Yahoo Finance">${c.ticker}</a>` : `<span class="ticker-badge">${c.ticker}</span>`}
+        <button onclick="openTickerModal('${c.ticker}')" title="Dettaglio" style="background:none;border:none;cursor:pointer;color:#4a5568;padding:0 2px;font-size:.75rem;vertical-align:middle" onmouseover="this.style.color='#a0aec0'" onmouseout="this.style.color='#4a5568'">ℹ</button>
+      </td>
+      <td style="max-width:170px;overflow:hidden;text-overflow:ellipsis;cursor:pointer" onclick="openTickerModal('${c.ticker}')" title="Apri dettaglio">
         ${c.desc||c.ticker} <span style="font-size:.65rem;background:#1e2332;border-radius:3px;padding:1px 4px;margin-left:3px">CHIUSA</span>
       </td>
       <td style="font-size:.7rem">${c.type}</td>
@@ -1381,8 +1470,11 @@ function renderTable(pm) {
       <td style="text-align:right">€${fmt(c.avgBuyPrice,4)}</td>
       <td style="text-align:right">€${fmt(c.avgSellPrice,4)}<br><span style="font-size:.65rem">venduta</span></td>
       <td style="text-align:right">—</td>
+      <td style="text-align:right">—</td>
       <td style="text-align:right"><span style="color:${plColor}">${c.realizedPL>=0?'+':'-'}€${fmt(Math.abs(c.realizedPL))}</span></td>
       <td style="text-align:right"><span style="color:${plColor}">${c.realizedPLpct>=0?'+':''}${fmt(c.realizedPLpct)}%</span></td>
+      <td style="text-align:right;color:#4a5568">—</td>
+      <td style="text-align:right;color:#4a5568">—</td>
       <td style="width:75px"><div class="gain-bar"><div class="bar-bg"><div class="bar-fill" style="width:${barW}%;background:${plColor}"></div></div><span style="font-size:.68rem;color:${plColor}">${c.realizedPLpct>=0?'+':''}${fmt(c.realizedPLpct,1)}%</span></div></td>
     </tr>`;
   }
@@ -1451,6 +1543,221 @@ function renderRealizedPL(byYear) {
     <td></td>
   </tr>`;
   tbody.innerHTML = html;
+}
+
+// ════════════════════════════════════════════════
+// TICKER DETAIL MODAL
+// ════════════════════════════════════════════════
+function openTickerModal(ticker) {
+  const rows   = G.rows || [];
+  const pos    = (G.positions || []).find(p => p.ticker === ticker);
+  const closed = (G.closedPositions || []).find(c => c.ticker === ticker);
+  const p      = pos || closed;
+  if (!p) return;
+
+  const INC = ['DIVIDEND','ETF_INCOME','COUPON'];
+  const allInc   = rows.filter(r => (TICKER_ALIASES[r.ticker]||r.ticker) === ticker && INC.includes(r.cat));
+  const allComm  = rows.filter(r => (TICKER_ALIASES[r.ticker]||r.ticker) === ticker && r.cat === 'COMMISSION');
+  const allTax   = rows.filter(r => (TICKER_ALIASES[r.ticker]||r.ticker) === ticker && r.cat === 'TAX');
+  const allTobin = rows.filter(r => (TICKER_ALIASES[r.ticker]||r.ticker) === ticker && r.cat === 'TOBIN');
+
+  const totalInc   = allInc.reduce((s,r)   => s + Math.abs(r.amount), 0);
+  const totalComm  = allComm.reduce((s,r)  => s + Math.abs(r.amount), 0);
+  const totalTax   = allTax.reduce((s,r)   => s + Math.abs(r.amount), 0);
+  const totalTobin = allTobin.reduce((s,r) => s + Math.abs(r.amount), 0);
+
+  // Income by year
+  const incByYear = {};
+  for (const r of allInc) {
+    const y = r.date.getFullYear();
+    incByYear[y] = (incByYear[y] || 0) + Math.abs(r.amount);
+  }
+
+  // Current price from pm (last rendered)
+  const pm = G._lastPm || {};
+  const q  = p.yahoo ? pm[p.yahoo] : null;
+  const lp = q?.regularMarketPrice ?? null;
+
+  // P&L latente (only for open)
+  const mv      = pos && lp != null ? lp * pos.shares : (pos ? pos.totalCost : null);
+  const latentPL = pos ? (mv != null ? mv - pos.totalCost : null) : null;
+
+  // Total Return = P&L latente (or realized for closed) + income
+  const basePL = pos
+    ? (latentPL ?? 0)
+    : (closed?.realizedPL ?? 0);
+  const totalReturn    = basePL + totalInc;
+  const costBase       = pos ? pos.totalCost : (closed?.totalCostAll ?? 0);
+  const totalReturnPct = costBase > 0 ? (totalReturn / costBase) * 100 : null;
+
+  // Yield on Cost
+  const yoc = costBase > 0 && totalInc > 0 ? (totalInc / costBase) * 100 : null;
+  // Annualized: divide by number of years holding
+  const firstBuy = rows.filter(r => (TICKER_ALIASES[r.ticker]||r.ticker) === ticker && r.cat === 'BUY')
+    .sort((a,b) => a.date - b.date)[0];
+  const holdYears = firstBuy ? Math.max((new Date() - firstBuy.date) / (365.25*24*3600*1000), 1) : 1;
+  const yocAnn    = yoc != null ? yoc / holdYears : null;
+
+  const yhUrl = p.yahoo ? `https://finance.yahoo.com/quote/${p.yahoo}/` : null;
+  const tc    = p.type==='Azione'?'#63b3ed':p.type==='ETF'?'#68d391':'#b794f4';
+
+  // Income rows by year
+  let incRows = Object.entries(incByYear).sort((a,b)=>a[0]-b[0])
+    .map(([y,v]) => `<div class="ticker-inc-row"><span style="color:#718096">${y}</span><span style="color:#68d391">+€${fmt(v)}</span></div>`).join('');
+
+  const isClosed = !!closed && !pos;
+
+  document.getElementById('tickerModalContent').innerHTML = `
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+      ${yhUrl
+        ? `<a class="ticker-badge" href="${yhUrl}" target="_blank" rel="noopener" style="font-size:1rem;padding:4px 10px">${ticker}</a>`
+        : `<span class="ticker-badge" style="font-size:1rem;padding:4px 10px">${ticker}</span>`}
+      <div>
+        <div style="font-weight:700;color:#e2e8f0">${p.desc||ticker}</div>
+        <div style="font-size:0.72rem;color:#718096;margin-top:2px">
+          <span style="color:${tc}">${p.type}</span>
+          ${p.sector&&p.sector!=='Altro'?` · ${p.sector}`:''}
+          ${p.geo&&p.geo!=='Altro'?` · ${p.geo}`:''}
+          ${isClosed?'<span style="margin-left:6px;background:#1e2332;border-radius:3px;padding:1px 5px;font-size:.65rem">CHIUSA</span>':''}
+        </div>
+      </div>
+    </div>
+
+    <div class="ticker-detail-grid">
+      ${pos ? `
+      <div class="ticker-kpi">
+        <div class="lbl">Quantità</div>
+        <div class="val">${fmt(pos.shares,0)}</div>
+      </div>
+      <div class="ticker-kpi">
+        <div class="lbl">Prezzo medio carico</div>
+        <div class="val">€${fmt(pos.avgCost,4)}</div>
+      </div>
+      <div class="ticker-kpi">
+        <div class="lbl">Valore portafoglio</div>
+        <div class="val">€${fmt(pos.totalCost)}</div>
+      </div>
+      <div class="ticker-kpi">
+        <div class="lbl">Prezzo corrente</div>
+        <div class="val">${lp!=null?'€'+fmt(lp,4):'<span style="color:#4a5568">N/D</span>'}</div>
+        ${lp!=null?`<div class="sub">Valore mkt: €${fmt(mv)}</div>`:''}
+      </div>
+      <div class="ticker-kpi">
+        <div class="lbl">P&L latente</div>
+        <div class="val ${latentPL==null?'':latentPL>=0?'green':'red'}">${latentPL!=null?(latentPL>=0?'+':'-')+'€'+fmt(Math.abs(latentPL)):'—'}</div>
+        ${latentPL!=null&&pos.totalCost>0?`<div class="sub">${((latentPL/pos.totalCost)*100)>=0?'+':''}${fmt((latentPL/pos.totalCost)*100)}% vs carico</div>`:''}
+      </div>` : `
+      <div class="ticker-kpi">
+        <div class="lbl">P&L realizzato</div>
+        <div class="val ${closed.realizedPL>=0?'green':'red'}">${closed.realizedPL>=0?'+':'-'}€${fmt(Math.abs(closed.realizedPL))}</div>
+        <div class="sub">${closed.realizedPLpct>=0?'+':''}${fmt(closed.realizedPLpct)}% sul costo</div>
+      </div>
+      <div class="ticker-kpi">
+        <div class="lbl">Prezzo medio acquisto</div>
+        <div class="val">€${fmt(closed.avgBuyPrice,4)}</div>
+      </div>`}
+      <div class="ticker-kpi">
+        <div class="lbl">Reddito totale (lordo)</div>
+        <div class="val green">+€${fmt(totalInc)}</div>
+        ${allInc.length>0?`<div class="sub">${allInc.length} pagamenti</div>`:''}
+      </div>
+      <div class="ticker-kpi" style="${totalReturnPct!=null?'border-left:3px solid '+(totalReturn>=0?'#48bb78':'#fc8181'):''}">
+        <div class="lbl">Total Return</div>
+        <div class="val ${totalReturn>=0?'green':'red'}">${totalReturn>=0?'+':'-'}€${fmt(Math.abs(totalReturn))}</div>
+        ${totalReturnPct!=null?`<div class="sub">${totalReturnPct>=0?'+':''}${fmt(totalReturnPct)}% (P&L + reddito)</div>`:''}
+      </div>
+    </div>
+
+    ${yoc!=null?`<div style="display:flex;gap:10px;margin-bottom:10px">
+      <div class="ticker-kpi" style="flex:1">
+        <div class="lbl">Yield on Cost (tot.)</div>
+        <div class="val" style="color:#f6ad55">${fmt(yoc,2)}%</div>
+        <div class="sub">reddito / costo carico</div>
+      </div>
+      <div class="ticker-kpi" style="flex:1">
+        <div class="lbl">Yield on Cost (ann.)</div>
+        <div class="val" style="color:#f6ad55">${fmt(yocAnn,2)}%/anno</div>
+        <div class="sub">media su ${fmt(holdYears,1)} anni</div>
+      </div>
+    </div>`:''}
+
+    ${totalInc>0?`<div style="background:#0f1117;border-radius:8px;padding:10px 12px;border:1px solid #2d3748;margin-bottom:10px">
+      <div style="font-size:0.7rem;color:#4a5568;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Reddito per anno</div>
+      ${incRows}
+    </div>`:''}
+
+    <div style="display:flex;gap:8px;flex-wrap:wrap;font-size:0.75rem">
+      ${totalComm>0?`<div style="background:#0f1117;border:1px solid #2d3748;border-radius:6px;padding:6px 10px">💸 Commissioni: <strong style="color:#fc8181">€${fmt(totalComm)}</strong></div>`:''}
+      ${totalTax>0?`<div style="background:#0f1117;border:1px solid #2d3748;border-radius:6px;padding:6px 10px">🏛 Ritenute: <strong style="color:#fc8181">€${fmt(totalTax)}</strong></div>`:''}
+      ${totalTobin>0?`<div style="background:#0f1117;border:1px solid #2d3748;border-radius:6px;padding:6px 10px">📋 Tobin: <strong style="color:#fc8181">€${fmt(totalTobin)}</strong></div>`:''}
+    </div>`;
+
+  document.getElementById('tickerModal').style.display = 'flex';
+  document.body.style.overflow = 'hidden';
+}
+
+function closeTickerModal() {
+  document.getElementById('tickerModal').style.display = 'none';
+  document.body.style.overflow = '';
+}
+
+// ════════════════════════════════════════════════
+// SCADENZA MINUSVALENZE
+// ════════════════════════════════════════════════
+function renderMinusvScadenza(byYear) {
+  const card    = document.getElementById('minusvCard');
+  const tbody   = document.getElementById('minusvTable');
+  const summary = document.getElementById('minusvSummary');
+  if (!card || !tbody) return;
+
+  // Only show rows with minusvalenze
+  const rows = byYear.filter(y => y.minusv > 0);
+  if (!rows.length) { card.style.display = 'none'; return; }
+  card.style.display = 'block';
+
+  const nowYear = new Date().getFullYear();
+  let html = '';
+  let totalActive = 0, expiringThisYear = 0;
+
+  for (const y of rows) {
+    const expiryYear = y.year + 4;
+    const net = y.plusv - y.minusv; // negative = net loss that year
+    let statusHtml, statusSort;
+
+    if (expiryYear < nowYear) {
+      statusHtml = `<span class="minus-badge expired">Scaduta</span>`;
+      statusSort = 0;
+    } else if (expiryYear === nowYear) {
+      statusHtml = `<span class="minus-badge warning">⚠ Scade nel ${nowYear}</span>`;
+      expiringThisYear += y.minusv;
+      totalActive += y.minusv;
+      statusSort = 2;
+    } else {
+      const rem = expiryYear - nowYear;
+      statusHtml = `<span class="minus-badge active">Valida · ${rem} ann${rem===1?'o':'i'}</span>`;
+      totalActive += y.minusv;
+      statusSort = 1;
+    }
+
+    html += `<tr>
+      <td style="font-weight:600;color:#a0aec0">${y.year}</td>
+      <td style="text-align:right;color:#fc8181">-€${fmt(y.minusv)}</td>
+      <td style="text-align:right;color:#68d391">${y.plusv>0?'+€'+fmt(y.plusv):'<span style="color:#4a5568">—</span>'}</td>
+      <td style="text-align:right"><span class="${net>=0?'green':'red'};font-weight:600">${net>=0?'+':'-'}€${fmt(Math.abs(net))}</span></td>
+      <td style="text-align:center;color:#a0aec0">31/12/${expiryYear}</td>
+      <td style="text-align:center">${statusHtml}</td>
+    </tr>`;
+  }
+  tbody.innerHTML = html;
+
+  // Summary box
+  let summaryHtml = `<div style="font-size:0.78rem;color:#a0aec0">
+    <strong style="color:#e2e8f0">Minusvalenze ancora valide: <span style="color:#fc8181">-€${fmt(totalActive)}</span></strong>`;
+  if (expiringThisYear > 0) {
+    summaryHtml += `&nbsp;·&nbsp;<span style="color:#f6ad55">⚠ €${fmt(expiringThisYear)} scadono entro il 31/12/${nowYear}</span>`;
+  }
+  summaryHtml += `</div>`;
+  summary.innerHTML = summaryHtml;
 }
 
 // ════════════════════════════════════════════════
@@ -1607,6 +1914,7 @@ function renderDashboard(rows) {
   fillRank('etfTable', payers.etf, C.green);
   fillCoupons(payers.coup);
   renderRealizedPL(realizedByYear);
+  renderMinusvScadenza(realizedByYear);
   renderDivCalendar();
 
   // Show dashboard
