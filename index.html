@@ -256,12 +256,21 @@ a.ticker-badge:hover{background:#2b6cb0;color:#fff}
 .hdr-btn.danger:hover{background:#742a2a;color:#fff}
 .data-info{font-size:0.68rem;color:#4a5568;white-space:nowrap}
 .hdr-actions{display:flex;align-items:center;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+@media(max-width:639px){.data-info{flex-basis:100%;text-align:left}}
 /* ── FOOTER ── */
 .site-footer{background:#1a1d2e;border-top:1px solid #2d3748;padding:12px 14px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;font-size:0.72rem;color:#4a5568}
 @media(min-width:640px){.site-footer{padding:16px 28px;font-size:0.76rem}}
 .site-footer a{color:#718096;text-decoration:none;transition:color .15s}
 .site-footer a:hover{color:#a0aec0}
 .footer-sep{color:#2d3748;margin:0 8px}
+.footer-right{display:flex;align-items:center;gap:10px}
+.ft-short{display:none}
+@media(max-width:639px){
+  .footer-copyright{flex-basis:100%}
+  .footer-right{flex-basis:100%;justify-content:space-between}
+  .ft-full{display:none}
+  .ft-short{display:inline}
+}
 
 /* ── MODAL ── */
 .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.75);backdrop-filter:blur(3px);z-index:1000;display:flex;align-items:flex-end;justify-content:center;padding:0}
@@ -520,11 +529,11 @@ a.ticker-badge:hover{background:#2b6cb0;color:#fff}
 
 <!-- ══ FOOTER ══ -->
 <footer class="site-footer">
-  <span>© 2026 <a href="https://www.emax83dev.it" target="_blank" rel="noopener">emax83dev</a></span>
-  <button onclick="openDonateModal()" style="background:none;border:1px solid #2d3748;border-radius:20px;color:#718096;padding:5px 14px;font-size:0.75rem;cursor:pointer;transition:all .2s;line-height:1.4" onmouseover="this.style.borderColor='#f6ad55';this.style.color='#f6ad55'" onmouseout="this.style.borderColor='#2d3748';this.style.color='#718096'">☕ Ti piace la web app?</button>
-  <span>
-    <a href="#" onclick="openPrivacyModal();return false;">Termini e condizioni & Privacy Policy</a>
-  </span>
+  <span class="footer-copyright">© 2026 <a href="https://www.emax83dev.it" target="_blank" rel="noopener">emax83dev</a></span>
+  <div class="footer-right">
+    <button onclick="openDonateModal()" style="background:none;border:1px solid #2d3748;border-radius:20px;color:#718096;padding:5px 14px;font-size:0.75rem;cursor:pointer;transition:all .2s;line-height:1.4" onmouseover="this.style.borderColor='#f6ad55';this.style.color='#f6ad55'" onmouseout="this.style.borderColor='#2d3748';this.style.color='#718096'">☕ <span class="ft-full">Ti piace la web app?</span><span class="ft-short">Ti piace</span></button>
+    <a href="#" onclick="openPrivacyModal();return false;"><span class="ft-full">Termini e condizioni & Privacy Policy</span><span class="ft-short">T&C-Privacy</span></a>
+  </div>
 </footer>
 
 <!-- ══ CLEAR DATA CONFIRM MODAL ══ -->
