@@ -1363,7 +1363,11 @@ function savePriceCache(cache) {
 }
 function isPriceFresh(entry) {
   if (!entry?.fetchedAt) return false;
-  return (Date.now() - new Date(entry.fetchedAt).getTime()) < 24 * 60 * 60 * 1000;
+  const d = new Date(entry.fetchedAt);
+  const now = new Date();
+  return d.getFullYear() === now.getFullYear() &&
+         d.getMonth()    === now.getMonth()    &&
+         d.getDate()     === now.getDate();
 }
 
 /** Scrape a single Yahoo Finance quote page for price data */
@@ -1513,7 +1517,10 @@ async function fetchPrices(forceRefresh = false) {
 
   if (total === 0) {
     document.getElementById('liveDot').style.background = '#48bb78';
-    document.getElementById('liveStatus').textContent = 'Cache · ' + new Date().toLocaleTimeString('it-IT');
+    const allEntries = [...liveYahoo.map(p => cache[p.yahoo]), ...liveBNP.map(p => cache[p.isin])].filter(Boolean);
+    const lastFetch = allEntries.reduce((max, e) => e.fetchedAt > max ? e.fetchedAt : max, '');
+    const lastStr = lastFetch ? new Date(lastFetch).toLocaleTimeString('it-IT', {hour:'2-digit', minute:'2-digit'}) : '?';
+    document.getElementById('liveStatus').textContent = `Cache oggi ${lastStr}`;
     return;
   }
 
@@ -1526,7 +1533,7 @@ async function fetchPrices(forceRefresh = false) {
   // ── Yahoo Finance ──────────────────────────────────────────
   for (const pos of toFetchYahoo) {
     const q = await scrapeSinglePrice(pos.yahoo);
-    if (q) { pm[pos.yahoo] = q; cache[pos.yahoo] = q; patchRowPrice(pos.ticker, q); }
+    if (q) { pm[pos.yahoo] = q; cache[pos.yahoo] = q; patchRowPrice(pos.ticker, q); savePriceCache(cache); }
     done++;
     document.getElementById('liveStatus').textContent = `Aggiornamento (${done}/${total})…`;
     if (done < total) await new Promise(r => setTimeout(r, 500));
@@ -1535,13 +1542,11 @@ async function fetchPrices(forceRefresh = false) {
   // ── BNP Paribas ────────────────────────────────────────────
   for (const pos of toFetchBNP) {
     const q = await scrapeBNPPrice(pos.isin);
-    if (q) { pm[pos.isin] = q; cache[pos.isin] = q; patchRowPrice(pos.ticker, q); }
+    if (q) { pm[pos.isin] = q; cache[pos.isin] = q; patchRowPrice(pos.ticker, q); savePriceCache(cache); }
     done++;
     document.getElementById('liveStatus').textContent = `Aggiornamento (${done}/${total})…`;
     if (done < total) await new Promise(r => setTimeout(r, 500));
   }
-
-  savePriceCache(cache);
 
   // ── Render finale: aggiorna KPI, Peso%, Total Return ───────
   renderTable(pm);
