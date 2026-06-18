@@ -249,6 +249,13 @@ a.ticker-badge:hover{background:#2b6cb0;color:#fff}
 .table-search:focus{border-color:#4299e1}
 .table-search::placeholder{color:#4a5568}
 
+/* ── HEADER ACTION BUTTONS ── */
+.hdr-btn{background:none;border:1px solid #2d3748;border-radius:6px;color:#a0aec0;padding:5px 10px;font-size:0.72rem;cursor:pointer;white-space:nowrap;transition:all .15s}
+.hdr-btn:hover{border-color:#718096;color:#e2e8f0}
+.hdr-btn.danger{border-color:#742a2a;color:#fc8181}
+.hdr-btn.danger:hover{background:#742a2a;color:#fff}
+.data-info{font-size:0.68rem;color:#4a5568;white-space:nowrap}
+.hdr-actions{display:flex;align-items:center;gap:6px;flex-wrap:wrap;justify-content:flex-end}
 /* ── FOOTER ── */
 .site-footer{background:#1a1d2e;border-top:1px solid #2d3748;padding:12px 14px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;font-size:0.72rem;color:#4a5568}
 @media(min-width:640px){.site-footer{padding:16px 28px;font-size:0.76rem}}
@@ -287,8 +294,8 @@ a.ticker-badge:hover{background:#2b6cb0;color:#fff}
     <div style="display:flex;gap:24px;justify-content:center;margin-bottom:22px;flex-wrap:wrap">
       <div style="text-align:center">
         <div style="font-size:1.4rem;margin-bottom:4px">🔒</div>
-        <div style="font-size:0.78rem;color:#48bb78;font-weight:600">Nessun dato memorizzato</div>
-        <div style="font-size:0.72rem;color:#4a5568">Tutto elaborato sul tuo browser</div>
+        <div style="font-size:0.78rem;color:#48bb78;font-weight:600">Solo nel tuo browser</div>
+        <div style="font-size:0.72rem;color:#4a5568">Nessun server, mai trasmessi</div>
       </div>
       <div style="text-align:center">
         <div style="font-size:1.4rem;margin-bottom:4px">⚡</div>
@@ -320,8 +327,16 @@ a.ticker-badge:hover{background:#2b6cb0;color:#fff}
     </div>
   </div>
   <div class="header-right">
-    <button class="reload-btn" onclick="document.getElementById('uploadZone').style.display='flex';document.getElementById('dashboard').style.display='none'">↩ CSV</button>
+    <div class="hdr-actions">
+      <span class="data-info" id="dataInfo"></span>
+      <button class="hdr-btn" onclick="document.getElementById('csvFileUpdate').click()" title="Sostituisce tutti i dati con il nuovo CSV">↑ Aggiorna</button>
+      <button class="hdr-btn" onclick="document.getElementById('csvFileIncremental').click()" title="Unisce il nuovo CSV ai dati esistenti (ultimo mese)">↑ Incrementale</button>
+      <button class="hdr-btn danger" onclick="openClearModal()">🗑 Cancella dati</button>
+    </div>
   </div>
+  <!-- Hidden file inputs for header update buttons -->
+  <input type="file" id="csvFileUpdate"       accept=".csv,.txt" style="display:none">
+  <input type="file" id="csvFileIncremental"  accept=".csv,.txt" style="display:none">
 </div>
 
 <div class="year-bar" id="yearBar">
@@ -529,6 +544,22 @@ a.ticker-badge:hover{background:#2b6cb0;color:#fff}
     <a href="#" onclick="openPrivacyModal();return false;">Termini e condizioni & Privacy Policy</a>
   </span>
 </footer>
+
+<!-- ══ CLEAR DATA CONFIRM MODAL ══ -->
+<div class="modal-overlay" id="clearModal" style="display:none" onclick="if(event.target===this)closeClearModal()">
+  <div class="modal-box" style="max-width:400px;width:90%">
+    <button class="modal-close" onclick="closeClearModal()">✕</button>
+    <h2 style="color:#fc8181">🗑 Cancella dati salvati</h2>
+    <p style="font-size:0.85rem;color:#a0aec0;margin:14px 0">
+      Stai per eliminare tutti i dati salvati nel browser (localStorage).<br>
+      Dovrai ricaricare il CSV per visualizzare il dashboard.
+    </p>
+    <div style="display:flex;gap:10px;margin-top:20px">
+      <button onclick="closeClearModal()" style="flex:1;background:#1a1d2e;border:1px solid #2d3748;color:#a0aec0;border-radius:8px;padding:10px;cursor:pointer;font-size:0.85rem">Annulla</button>
+      <button onclick="confirmClearData()" style="flex:1;background:#742a2a;border:1px solid #fc8181;color:#fff;border-radius:8px;padding:10px;cursor:pointer;font-size:0.85rem;font-weight:700">Sì, cancella tutto</button>
+    </div>
+  </div>
+</div>
 
 <!-- ══ TICKER DETAIL MODAL ══ -->
 <div class="modal-overlay" id="tickerModal" style="display:none" onclick="if(event.target===this)closeTickerModal()">
@@ -1892,6 +1923,7 @@ function renderDashboard(rows) {
   const realizedByYear = buildRealizedByYear(realized);
 
   G = {rows, positions: open, closedPositions: closed, realized, realizedByYear, monthly, yearly, payers};
+  updateDataInfo(rows);
 
   // Header subtitle
   const dates = rows.map(r=>r.date).filter(Boolean).sort((a,b)=>a-b);
@@ -1947,9 +1979,116 @@ function loadFile(file) {
 
 function openPrivacyModal()  { document.getElementById('privacyModal').style.display='flex'; document.body.style.overflow='hidden'; }
 function closePrivacyModal() { document.getElementById('privacyModal').style.display='none'; document.body.style.overflow=''; }
-document.addEventListener('keydown', e => { if (e.key==='Escape') closePrivacyModal(); });
+document.getElementById('csvFileUpdate').addEventListener('change', e => { loadFile(e.target.files[0], 'full'); e.target.value=''; });
+document.getElementById('csvFileIncremental').addEventListener('change', e => { loadFile(e.target.files[0], 'merge'); e.target.value=''; });
+document.addEventListener('keydown', e => { if (e.key==='Escape') { closePrivacyModal(); closeClearModal(); closeTickerModal(); } });
 
-document.getElementById('csvFile').addEventListener('change', e => loadFile(e.target.files[0]));
+// ════════════════════════════════════════════════
+// LOCALSTORAGE CACHE
+// ════════════════════════════════════════════════
+const CACHE_KEY      = 'directa_rows_v1';
+const CACHE_META_KEY = 'directa_meta_v1';
+
+function saveToCache(rows) {
+  try {
+    const serialized = rows.map(r => ({...r, date: r.date ? r.date.toISOString() : null}));
+    localStorage.setItem(CACHE_KEY, JSON.stringify(serialized));
+    const maxDate = rows.map(r => r.date).filter(Boolean).sort((a,b) => b-a)[0];
+    localStorage.setItem(CACHE_META_KEY, JSON.stringify({
+      savedAt: new Date().toISOString(),
+      maxDate: maxDate ? maxDate.toISOString() : null,
+      rowCount: rows.length,
+    }));
+  } catch(e) { console.warn('localStorage write failed:', e); }
+}
+
+function loadFromCache() {
+  try {
+    const raw = localStorage.getItem(CACHE_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw).map(r => ({...r, date: r.date ? new Date(r.date) : null}));
+  } catch(e) { return null; }
+}
+
+function clearCache() {
+  localStorage.removeItem(CACHE_KEY);
+  localStorage.removeItem(CACHE_META_KEY);
+}
+
+function getCacheMeta() {
+  try {
+    const raw = localStorage.getItem(CACHE_META_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch(e) { return null; }
+}
+
+/** Merge: keep cached rows before new CSV's date range, append new rows */
+function mergeRows(cachedRows, newRows) {
+  if (!newRows.length) return cachedRows;
+  const minNew  = newRows.map(r => r.date).filter(Boolean).sort((a,b) => a-b)[0];
+  const cutoff  = new Date(minNew.getTime() - 24*60*60*1000); // 1 day before
+  const kept    = cachedRows.filter(r => r.date && r.date < cutoff);
+  return [...kept, ...newRows].sort((a,b) => a.date - b.date);
+}
+
+function updateDataInfo(rows) {
+  const el = document.getElementById('dataInfo');
+  if (!el) return;
+  const maxDate = rows.map(r => r.date).filter(Boolean).sort((a,b) => b-a)[0];
+  el.textContent = maxDate
+    ? 'Dati aggiornati al ' + maxDate.toLocaleDateString('it-IT',{day:'2-digit',month:'2-digit',year:'numeric'})
+    : '';
+}
+
+// ── Clear modal ──
+function openClearModal()  { document.getElementById('clearModal').style.display='flex'; document.body.style.overflow='hidden'; }
+function closeClearModal() { document.getElementById('clearModal').style.display='none'; document.body.style.overflow=''; }
+function confirmClearData() {
+  clearCache();
+  closeClearModal();
+  // Show upload zone, hide dashboard
+  document.getElementById('dashboard').style.display = 'none';
+  document.getElementById('uploadZone').style.display = 'flex';
+  document.getElementById('uploadErr').style.display  = 'none';
+  G = {};
+}
+
+// ── File handlers ──
+function loadFile(file, mode = 'full') {
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const newRows = parseCSV(e.target.result);
+      if (newRows.length < 5) throw new Error(`Solo ${newRows.length} righe trovate. Verifica il file.`);
+      let finalRows = newRows;
+      if (mode === 'merge') {
+        const cached = loadFromCache();
+        if (cached && cached.length) {
+          finalRows = mergeRows(cached, newRows);
+        }
+      }
+      saveToCache(finalRows);
+      renderDashboard(finalRows);
+    } catch(err) {
+      const errEl = document.getElementById('uploadErr');
+      if (errEl) { errEl.textContent = '❌ ' + err.message; errEl.style.display = 'block'; }
+      else alert('❌ ' + err.message);
+    }
+  };
+  reader.readAsText(file, 'UTF-8');
+}
+
+// ── Auto-load from cache on startup ──
+document.addEventListener('DOMContentLoaded', () => {
+  const cached = loadFromCache();
+  if (cached && cached.length >= 5) {
+    renderDashboard(cached);
+  }
+});
+
+// ── Event listeners ──
+document.getElementById('csvFile').addEventListener('change', e => { loadFile(e.target.files[0], 'full'); e.target.value=''; });
 
 const drop = document.getElementById('dropArea');
 drop.addEventListener('dragover',  e => { e.preventDefault(); drop.classList.add('drag-over'); });
