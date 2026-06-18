@@ -356,6 +356,7 @@ a.ticker-badge:hover{background:#2b6cb0;color:#fff}
     <div class="kpi"><div class="label">Plus/Minusvalenza</div><div class="value" id="kpiPL">—</div><div class="sub" id="kpiPLpct">—</div></div>
     <div class="kpi"><div class="label">Posizioni Attive</div><div class="value blue" id="kpiPos">—</div><div class="sub" id="kpiPosSub">—</div></div>
     <div class="kpi"><div class="label">Dividend Yield</div><div class="value orange" id="kpiYield">—</div><div class="sub" id="kpiYieldSub">Sul costo portafoglio</div></div>
+    <div class="kpi"><div class="label">Liquidità</div><div class="value" id="kpiLiq">—</div><div class="sub" id="kpiLiqSub">Saldo cassa</div></div>
   </div>
 
   <!-- DYNAMIC PROGRESSIVE CHARTS -->
@@ -501,7 +502,8 @@ a.ticker-badge:hover{background:#2b6cb0;color:#fff}
             <th style="text-align:right">Plusvalenze</th>
             <th style="text-align:right" title="Cedole certificati — compensano le minusvalenze">Cedole cert.</th>
             <th style="text-align:right">Minusvalenze</th>
-            <th style="text-align:right">Netto</th>
+            <th style="text-align:right">Netto anno</th>
+            <th style="text-align:right" title="Minusvalenza residua dopo compensazione FIFO cross-year">Residuo</th>
             <th style="text-align:center">Scade il</th>
             <th style="text-align:center">Status</th>
             <th style="text-align:right">Vendite</th>
@@ -738,6 +740,7 @@ function parseCSV(text) {
     qty:    ci(['quantit']),
     amount: ci(['importo euro','importo (€)','importo eur','importo']),
     price:  ci(['prezzo unitario','prezzo unit','prezzo']),
+    saldo:  ci(['saldo']),
   };
 
   const rows = [];
@@ -766,6 +769,7 @@ function parseCSV(text) {
       qty:    COL.qty    >= 0 ? Math.abs(parseNum(c[COL.qty]))   : 0,
       amount: COL.amount >= 0 ? parseNum(c[COL.amount]) : 0,
       price:  COL.price  >= 0 ? parseNum(c[COL.price])  : 0,
+      saldo:  COL.saldo  >= 0 ? parseNum(c[COL.saldo])  : null,
     });
   }
   return rows.filter(r => r.date);
@@ -1040,6 +1044,23 @@ function updateDynCharts() {
 
 function fmt(n,d=2){return n.toLocaleString('it-IT',{minimumFractionDigits:d,maximumFractionDigits:d})}
 
+// Legge la colonna Saldo del CSV — è il saldo cassa esatto di Directa.
+// Per "tutto": saldo dell'ultima riga cronologicamente (= liquidità oggi).
+// Per anno Y: saldo dell'ultima riga entro il 31/12/Y.
+function computeLiquidita(year) {
+  const rows = G.rows || [];
+  const cutYear = year === 'tutto' ? Infinity : Number(year);
+  // Filtra righe con saldo valido e entro la data limite
+  const candidates = rows.filter(r =>
+    r.saldo != null && !isNaN(r.saldo) && r.date &&
+    r.date.getFullYear() <= cutYear
+  );
+  if (!candidates.length) return null;
+  // Prende la riga con la data più recente (saldo finale del periodo)
+  const latest = candidates.reduce((max, r) => r.date >= max.date ? r : max, candidates[0]);
+  return latest.saldo;
+}
+
 function updateKPIs() {
   const {monthly, yearly, positions} = G;
   let dep=0, gross=0, net=0, tax=0, depLbl='';
@@ -1089,6 +1110,20 @@ function updateKPIs() {
       document.getElementById('kpiYield').textContent = '—';
     }
     document.getElementById('kpiYieldSub').textContent = `Lordo ${year} / costo`;
+  }
+
+  // ── Liquidità (saldo cassa da colonna Saldo CSV) ──
+  const liq = computeLiquidita(year);
+  const liqEl = document.getElementById('kpiLiq');
+  if (liq == null) {
+    liqEl.textContent = '—';
+    liqEl.className   = 'value';
+    document.getElementById('kpiLiqSub').textContent = 'Colonna saldo non trovata';
+  } else {
+    liqEl.textContent = (liq >= 0 ? '€' : '−€') + fmt(Math.abs(liq));
+    liqEl.className   = 'value ' + (liq >= 0 ? (liq < 500 ? 'yellow' : 'green') : 'red');
+    document.getElementById('kpiLiqSub').textContent =
+      year === 'tutto' ? 'Saldo cassa attuale' : `Saldo al 31/12/${year}`;
   }
 }
 
@@ -1658,6 +1693,66 @@ function filterLiveTable(q) {
 }
 
 // ════════════════════════════════════════════════
+// ZAINETTO FISCALE (simulazione cronologica)
+// ════════════════════════════════════════════════
+// Processa gain e loss in ordine di data — esattamente come fa Directa.
+// I gain vengono applicati ai deficit più vecchi (FIFO) prima di essere tassati.
+// I loss dello stesso giorno vengono processati DOPO i gain (gain-first tie-break).
+// Restituisce { year: residuoNonCompensato } per ogni anno con minusvalenze.
+function computeZainetto() {
+  const realized = G.realized || [];
+  const rows     = G.rows     || [];
+  const EPS      = 0.005;
+
+  const events = [];
+
+  // Plusvalenze/minusvalenze da vendite
+  for (const r of realized) {
+    if (Math.abs(r.pl) < EPS) continue;
+    events.push({ date: r.date, year: r.year,
+                  type: r.pl > 0 ? 'gain' : 'loss', amount: Math.abs(r.pl) });
+  }
+  // Cedole certificati (redditi diversi → compensano le minus)
+  for (const r of rows) {
+    if (r.cat !== 'COUPON' || Math.abs(r.amount) < EPS) continue;
+    events.push({ date: r.date, year: r.date.getFullYear(),
+                  type: 'gain', amount: Math.abs(r.amount) });
+  }
+
+  // Ordina per data; a parità di data i gain prima dei loss
+  events.sort((a, b) => (a.date - b.date) || (a.type === 'gain' ? -1 : 1));
+
+  const zainetto = {};  // year → deficit residuo
+
+  for (const ev of events) {
+    if (ev.type === 'loss') {
+      zainetto[ev.year] = (zainetto[ev.year] || 0) + ev.amount;
+    } else {
+      // Applica il gain ai deficit più vecchi non scaduti (FIFO - oldest first)
+      let remaining = ev.amount;
+      const gainYear = ev.year;
+      const lossYears = Object.keys(zainetto)
+        .map(Number)
+        .filter(y => zainetto[y] > EPS && gainYear - y <= 4)
+        .sort((a, b) => a - b);
+      for (const ly of lossYears) {
+        if (remaining <= EPS) break;
+        const comp = Math.min(remaining, zainetto[ly]);
+        zainetto[ly] -= comp;
+        remaining -= comp;
+      }
+    }
+  }
+
+  // Azzera valori sotto soglia numerica
+  for (const y of Object.keys(zainetto)) {
+    if (zainetto[y] < EPS) delete zainetto[y];
+  }
+
+  return zainetto;
+}
+
+// ════════════════════════════════════════════════
 // PLUSVALENZE / MINUSVALENZE
 // ════════════════════════════════════════════════
 function renderRealizedPL(byYear) {
@@ -1667,7 +1762,7 @@ function renderRealizedPL(byYear) {
   if (!byYear.length) { card.style.display='none'; return; }
   card.style.display='block';
 
-  // ── Cedole certificati per anno (compensano le minusvalenze) ──
+  // ── Cedole per anno (solo per display) ──
   const cedoleByYear = {};
   for (const r of G.rows||[]) {
     if (r.cat !== 'COUPON') continue;
@@ -1675,34 +1770,54 @@ function renderRealizedPL(byYear) {
     cedoleByYear[y] = (cedoleByYear[y]||0) + Math.abs(r.amount);
   }
 
+  // ── Simulazione cronologica zainetto ──
+  const zainetto = computeZainetto();  // { year: residuo }
+
   const nowYear = new Date().getFullYear();
+  const sortedYears = byYear.map(y => y.year).sort((a,b)=>a-b);
+  const yearIndex = Object.fromEntries(byYear.map(y => [y.year, y]));
+
   let totalPlusv=0, totalCedole=0, totalMinusv=0;
   let totalActive=0, expiringAmount=0, expiringYear=null;
   let html = '';
 
-  for (const y of byYear) {
-    const cedole     = cedoleByYear[y.year] || 0;
-    const compensato = y.plusv + cedole;            // totale che riduce le minus
-    const net        = compensato - y.minusv;       // netto anno
-    totalPlusv  += y.plusv;
+  for (const Y of sortedYears) {
+    const d      = yearIndex[Y];
+    const cedole = cedoleByYear[Y] || 0;
+    const net    = d.plusv + cedole - d.minusv;
+    totalPlusv  += d.plusv;
     totalCedole += cedole;
-    totalMinusv += y.minusv;
+    totalMinusv += d.minusv;
 
-    // Scadenza / status (solo se ci sono minusvalenze)
-    let scadeHtml = '<td style="text-align:center;color:#2d3748">—</td>';
-    let statusHtml = '<td style="text-align:center;color:#2d3748">—</td>';
-    if (y.minusv > 0) {
-      const expiryYear = y.year + 4;
+    const expiryYear = Y + 4;
+    const residuo    = zainetto[Y] || 0;
+    const compensata = d.minusv > 0 && residuo < 0.005;
+
+    // Colonna Residuo
+    let residuoCell;
+    if (d.minusv <= 0) {
+      residuoCell = `<td style="text-align:right;color:#4a5568">—</td>`;
+    } else if (compensata) {
+      residuoCell = `<td style="text-align:right;color:#68d391;font-weight:600">✓ —</td>`;
+    } else {
+      const urgColor = expiryYear <= nowYear + 1 ? '#f6ad55' : '#fc8181';
+      residuoCell = `<td style="text-align:right;color:${urgColor};font-weight:600">-€${fmt(residuo)}</td>`;
+    }
+
+    // Scade / Status
+    let scadeHtml  = `<td style="text-align:center;color:#2d3748">—</td>`;
+    let statusHtml = `<td style="text-align:center;color:#2d3748">—</td>`;
+    if (d.minusv > 0) {
       scadeHtml = `<td style="text-align:center;color:#718096;font-size:.78rem">31/12/${expiryYear}</td>`;
       if (expiryYear < nowYear) {
         statusHtml = `<td style="text-align:center"><span class="minus-badge expired">Scaduta</span></td>`;
+      } else if (compensata) {
+        statusHtml = `<td style="text-align:center"><span class="minus-badge active">Compensata ✓</span></td>`;
       } else if (expiryYear === nowYear) {
-        const residuo = Math.max(y.minusv - compensato, 0);
         statusHtml = `<td style="text-align:center"><span class="minus-badge warning">⚠ Scade nel ${nowYear}</span></td>`;
-        if (residuo > 0) { expiringAmount += residuo; expiringYear = nowYear; }
+        expiringAmount += residuo; expiringYear = nowYear;
         totalActive += residuo;
       } else {
-        const residuo = Math.max(y.minusv - compensato, 0);
         const rem = expiryYear - nowYear;
         statusHtml = `<td style="text-align:center"><span class="minus-badge active">Valida · ${rem} ann${rem===1?'o':'i'}</span></td>`;
         totalActive += residuo;
@@ -1710,38 +1825,37 @@ function renderRealizedPL(byYear) {
     }
 
     html += `<tr>
-      <td style="font-weight:600;color:#a0aec0">${y.year}</td>
-      <td style="text-align:right;color:#68d391">${y.plusv>0?'+€'+fmt(y.plusv):'<span style="color:#4a5568">—</span>'}</td>
+      <td style="font-weight:600;color:#a0aec0">${Y}</td>
+      <td style="text-align:right;color:#68d391">${d.plusv>0?'+€'+fmt(d.plusv):'<span style="color:#4a5568">—</span>'}</td>
       <td style="text-align:right;color:#b794f4">${cedole>0?'+€'+fmt(cedole):'<span style="color:#4a5568">—</span>'}</td>
-      <td style="text-align:right;color:#fc8181">${y.minusv>0?'-€'+fmt(y.minusv):'<span style="color:#4a5568">—</span>'}</td>
+      <td style="text-align:right;color:#fc8181">${d.minusv>0?'-€'+fmt(d.minusv):'<span style="color:#4a5568">—</span>'}</td>
       <td style="text-align:right"><span class="${net>=0?'green':'red'}" style="font-weight:600">${net>=0?'+':'-'}€${fmt(Math.abs(net))}</span></td>
-      ${scadeHtml}${statusHtml}
-      <td style="text-align:right;color:#4a5568;font-size:.75rem">${y.count} ${y.count===1?'vendita':'vendite'}</td>
+      ${residuoCell}${scadeHtml}${statusHtml}
+      <td style="text-align:right;color:#4a5568;font-size:.75rem">${d.count} ${d.count===1?'vendita':'vendite'}</td>
     </tr>`;
   }
 
   // ── Totale ──
-  const totComp = totalPlusv + totalCedole;
-  const totNet  = totComp - totalMinusv;
+  const totNet = (totalPlusv + totalCedole) - totalMinusv;
   html += `<tr style="border-top:2px solid #2d3748;font-weight:700">
     <td style="color:#a0aec0">Totale</td>
     <td style="text-align:right;color:#68d391">+€${fmt(totalPlusv)}</td>
     <td style="text-align:right;color:#b794f4">+€${fmt(totalCedole)}</td>
     <td style="text-align:right;color:#fc8181">-€${fmt(totalMinusv)}</td>
     <td style="text-align:right"><span class="${totNet>=0?'green':'red'}">${totNet>=0?'+':'-'}€${fmt(Math.abs(totNet))}</span></td>
-    <td colspan="3"></td>
+    <td colspan="4"></td>
   </tr>`;
   tbody.innerHTML = html;
 
   // ── Summary box ──
   if (summary) {
     let s = `<div style="font-size:0.78rem;color:#a0aec0">
-      <strong style="color:#e2e8f0">Minusvalenze residue compensabili: <span style="color:#fc8181">-€${fmt(totalActive)}</span></strong>`;
-    if (expiringAmount > 0) {
+      <strong style="color:#e2e8f0">Minusvalenze residue compensabili: <span style="color:${totalActive>0.005?'#fc8181':'#68d391'}">${totalActive>0.005?'-€'+fmt(totalActive):'€ 0'}</span></strong>`;
+    if (expiringAmount > 0.005) {
       s += `&nbsp;·&nbsp;<span style="color:#f6ad55">⚠ €${fmt(expiringAmount)} scadono entro 31/12/${expiringYear}</span>`;
     }
-    if (totalActive === 0 && totalMinusv > 0) {
-      s += `&nbsp;·&nbsp;<span style="color:#68d391">✓ Tutte compensate o scadute</span>`;
+    if (totalActive <= 0.005 && totalMinusv > 0) {
+      s += `&nbsp;·&nbsp;<span style="color:#68d391">✓ Tutte compensate</span>`;
     }
     s += `</div>`;
     summary.innerHTML = s;
