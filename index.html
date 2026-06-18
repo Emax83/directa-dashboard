@@ -451,7 +451,7 @@ a.ticker-badge:hover{background:#2b6cb0;color:#fff}
           <div class="dot" id="liveDot" style="background:#718096"></div>
           <span id="liveStatus">—</span>
         </div>
-        <button class="refresh-btn" onclick="fetchPrices()">↻ Aggiorna</button>
+        <button class="refresh-btn" onclick="fetchPrices(true)">↻ Aggiorna</button>
       </div>
     </div>
     <div id="errorBox"></div>
@@ -474,10 +474,11 @@ a.ticker-badge:hover{background:#2b6cb0;color:#fff}
             <th style="text-align:right" title="P&L + dividendi/cedole ricevute">Total Return</th>
             <th style="text-align:right" title="Reddito ricevuto / prezzo medio carico">YoC %</th>
             <th>Barra</th>
+            <th style="text-align:center" title="Data/ora ultimo aggiornamento prezzo">Data Prezzo</th>
           </tr>
         </thead>
         <tbody id="liveTable">
-          <tr class="loading-row"><td colspan="13">Carica il CSV per vedere le posizioni</td></tr>
+          <tr class="loading-row"><td colspan="14">Carica il CSV per vedere le posizioni</td></tr>
         </tbody>
       </table>
     </div>
@@ -486,12 +487,11 @@ a.ticker-badge:hover{background:#2b6cb0;color:#fff}
     </div>
   </div>
 
-  <!-- PLUSVALENZE / MINUSVALENZE -->
+  <!-- PLUSVALENZE / MINUSVALENZE + SCADENZA (tabella unificata) -->
   <div class="card" id="realizedCard" style="display:none">
     <h3 class="section-title">📉 Plusvalenze &amp; Minusvalenze Realizzate</h3>
     <p style="font-size:0.75rem;color:#4a5568;margin-bottom:14px">
-      Calcolate su ogni vendita: <strong style="color:#718096">ricavo − (prezzo medio carico × quantità venduta)</strong>.
-      Importi lordi pre-ritenuta. In regime di risparmio amministrato (Directa), le minusvalenze sono compensabili con plusvalenze future entro 4 anni.
+      Netto = plusvalenze + cedole certificati − minusvalenze. Le <strong style="color:#b794f4">cedole dei certificati</strong> sono classificate come redditi diversi e compensano le minusvalenze in regime amministrato (FIFO, entro <strong style="color:#718096">4 anni</strong>).
     </p>
     <div style="overflow-x:auto">
       <table>
@@ -499,36 +499,15 @@ a.ticker-badge:hover{background:#2b6cb0;color:#fff}
           <tr>
             <th>Anno</th>
             <th style="text-align:right">Plusvalenze</th>
+            <th style="text-align:right" title="Cedole certificati — compensano le minusvalenze">Cedole cert.</th>
             <th style="text-align:right">Minusvalenze</th>
             <th style="text-align:right">Netto</th>
-            <th style="text-align:right">Operazioni</th>
+            <th style="text-align:center">Scade il</th>
+            <th style="text-align:center">Status</th>
+            <th style="text-align:right">Vendite</th>
           </tr>
         </thead>
         <tbody id="realizedTable"></tbody>
-      </table>
-    </div>
-  </div>
-
-  <!-- SCADENZA MINUSVALENZE -->
-  <div class="card" id="minusvCard" style="display:none">
-    <h3 class="section-title">⏳ Scadenza Minusvalenze</h3>
-    <p style="font-size:0.75rem;color:#4a5568;margin-bottom:14px">
-      In regime di risparmio amministrato le minusvalenze si compensano con plusvalenze entro <strong style="color:#718096">4 anni</strong>.
-      Directa applica la compensazione automaticamente in ordine FIFO.
-    </p>
-    <div style="overflow-x:auto">
-      <table>
-        <thead>
-          <tr>
-            <th>Anno perdita</th>
-            <th style="text-align:right">Minusvalenze</th>
-            <th style="text-align:right">Plusvalenze anno</th>
-            <th style="text-align:right">Netto anno</th>
-            <th style="text-align:center">Scade il</th>
-            <th style="text-align:center">Status</th>
-          </tr>
-        </thead>
-        <tbody id="minusvTable"></tbody>
       </table>
     </div>
     <div style="margin-top:12px;padding:10px 12px;background:#0f1117;border-radius:6px;border-left:3px solid #f6ad55" id="minusvSummary"></div>
@@ -1255,129 +1234,116 @@ function fillCoupons(data) {
 }
 
 // ════════════════════════════════════════════════
-// LIVE PRICES  (3-tier: v7 batch → v8 chart → HTML scrape)
+// LIVE PRICES  (HTML scraping · sequential · localStorage cache)
 // ════════════════════════════════════════════════
+const PRICE_CACHE_KEY = 'directa_prices_v1';
 const PROXIES = [
   u => `https://corsproxy.io/?${encodeURIComponent(u)}`,
   u => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`,
 ];
 
-/** Fetch URL via CORS proxy → parse as JSON */
-async function fetchJsonProxy(url) {
-  for (const p of PROXIES) {
-    try {
-      const r = await fetch(p(url), {signal:AbortSignal.timeout(9000)});
-      if (r.ok) return await r.json();
-    } catch(e) {}
-  }
-  return null;
-}
-
-/** Fetch URL via CORS proxy → return raw text */
 async function fetchTextProxy(url) {
   for (const p of PROXIES) {
     try {
-      const r = await fetch(p(url), {signal:AbortSignal.timeout(12000)});
+      const r = await fetch(p(url), {signal: AbortSignal.timeout(12000)});
       if (r.ok) return await r.text();
     } catch(e) {}
   }
   return null;
 }
 
-/**
- * Tier 2 — Yahoo Finance v8 chart API (JSON, single symbol).
- * Endpoint: query1.finance.yahoo.com/v8/finance/chart/{sym}?interval=1d&range=1d
- */
-async function fetchViaV8(sym) {
-  try {
-    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${sym}?interval=1d&range=1d`;
-    const data = await fetchJsonProxy(url);
-    const meta = data?.chart?.result?.[0]?.meta;
-    if (meta?.regularMarketPrice != null) {
-      const prev = meta.chartPreviousClose || meta.regularMarketPrice;
-      const ch   = meta.regularMarketPrice - prev;
-      return {
-        regularMarketPrice:         meta.regularMarketPrice,
-        regularMarketChange:        ch,
-        regularMarketChangePercent: prev > 0 ? (ch / prev) * 100 : 0,
-      };
-    }
-  } catch(e) {}
-  return null;
+function loadPriceCache() {
+  try { return JSON.parse(localStorage.getItem(PRICE_CACHE_KEY) || '{}'); }
+  catch(e) { return {}; }
+}
+function savePriceCache(cache) {
+  try { localStorage.setItem(PRICE_CACHE_KEY, JSON.stringify(cache)); }
+  catch(e) {}
+}
+function isPriceFresh(entry) {
+  if (!entry?.fetchedAt) return false;
+  return (Date.now() - new Date(entry.fetchedAt).getTime()) < 24 * 60 * 60 * 1000;
 }
 
-/**
- * Tier 3 — HTML scrape of yahoo finance quote page.
- * Looks for:
- *   data-testid="qsp-price"          (current price span)
- *   data-testid="qsp-price-change"   (change)
- *   "regularMarketPrice":{"raw":NNN  (embedded JSON fallback)
- */
-async function fetchViaScrape(sym) {
+/** Scrape a single Yahoo Finance quote page for price data */
+async function scrapeSinglePrice(sym) {
   try {
     const html = await fetchTextProxy(`https://finance.yahoo.com/quote/${sym}/`);
     if (!html) return null;
-
-    // Primary: data-testid attributes
     const mPrice = html.match(/data-testid="qsp-price"[^>]*>\s*([\d.,]+)/);
     const mChg   = html.match(/data-testid="qsp-price-change"[^>]*>\s*([+-]?[\d.,]+)/);
-    // value format: "(+1.06%)" or "-1.06%"
     const mChgP  = html.match(/data-testid="qsp-price-change-percent"[^>]*>\s*\(?([+-]?[\d.,]+)%/);
-
     if (mPrice) {
       const price = parseFloat(mPrice[1].replace(',', '.'));
       if (!isNaN(price)) return {
         regularMarketPrice:         price,
-        regularMarketChange:        mChg  ? parseFloat(mChg[1].replace(',','.'))  : null,
-        regularMarketChangePercent: mChgP ? parseFloat(mChgP[1].replace(',','.')) : null,
+        regularMarketChange:        mChg  ? parseFloat(mChg[1].replace(',', '.'))  : null,
+        regularMarketChangePercent: mChgP ? parseFloat(mChgP[1].replace(',', '.')) : null,
+        fetchedAt: new Date().toISOString(),
       };
     }
-
-    // Fallback: embedded JSON blob (SSR hydration data)
+    // Fallback: embedded SSR JSON
     const mJson = html.match(/"regularMarketPrice":\{"raw":([\d.]+)/);
     const mChJ  = html.match(/"regularMarketChange":\{"raw":([+-]?[\d.]+)/);
     const mChPJ = html.match(/"regularMarketChangePercent":\{"raw":([+-]?[\d.]+)/);
-    if (mJson) {
-      return {
-        regularMarketPrice:         parseFloat(mJson[1]),
-        regularMarketChange:        mChJ  ? parseFloat(mChJ[1])  : null,
-        regularMarketChangePercent: mChPJ ? parseFloat(mChPJ[1]) : null,
-      };
-    }
+    if (mJson) return {
+      regularMarketPrice:         parseFloat(mJson[1]),
+      regularMarketChange:        mChJ  ? parseFloat(mChJ[1])  : null,
+      regularMarketChangePercent: mChPJ ? parseFloat(mChPJ[1]) : null,
+      fetchedAt: new Date().toISOString(),
+    };
   } catch(e) {}
   return null;
 }
 
-async function fetchPrices() {
+/** Format fetchedAt timestamp for the "Data Prezzo" column */
+function fmtPriceDate(isoStr) {
+  if (!isoStr) return '—';
+  const d = new Date(isoStr);
+  const now = new Date();
+  const sameDay = d.toDateString() === now.toDateString();
+  return sameDay
+    ? d.toLocaleTimeString('it-IT', {hour:'2-digit', minute:'2-digit'})
+    : d.toLocaleDateString('it-IT', {day:'2-digit', month:'2-digit'});
+}
+
+async function fetchPrices(forceRefresh = false) {
   const positions = G.positions || [];
   const live = positions.filter(p => p.yahoo);
   if (!live.length) return;
 
-  document.getElementById('liveTable').innerHTML =
-    `<tr class="loading-row"><td colspan="13"><span class="spinner"></span>Recupero prezzi…</td></tr>`;
-  document.getElementById('errorBox').innerHTML = '';
-  document.getElementById('liveDot').style.background = '#f6ad55';
-  document.getElementById('liveStatus').textContent = 'Aggiornamento…';
+  const cache = loadPriceCache();
+  const toFetch = forceRefresh ? live : live.filter(p => !isPriceFresh(cache[p.yahoo]));
 
-  let pm = {};
-
-  // ── Tier 1: v7 batch API ──────────────────────────────────
-  const syms = live.map(p => p.yahoo).join(',');
-  const yUrl = `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${syms}&fields=regularMarketPrice,regularMarketChange,regularMarketChangePercent`;
-  const batchData = await fetchJsonProxy(yUrl);
-  (batchData?.quoteResponse?.result || []).forEach(q => { pm[q.symbol] = q; });
-
-  // ── Tier 2 + 3: individual fallback for missing tickers ──
-  const missing = live.filter(p => !pm[p.yahoo]);
-  if (missing.length) {
-    await Promise.allSettled(missing.map(async (pos) => {
-      // try v8 chart API first, then HTML scrape
-      const q = (await fetchViaV8(pos.yahoo)) || (await fetchViaScrape(pos.yahoo));
-      if (q) pm[pos.yahoo] = q;
-    }));
+  // All fresh from cache — render immediately
+  if (toFetch.length === 0) {
+    document.getElementById('liveDot').style.background = '#48bb78';
+    document.getElementById('liveStatus').textContent = 'Cache · ' + new Date().toLocaleTimeString('it-IT');
+    renderTable(cache);
+    return;
   }
 
-  const fetched = Object.keys(pm).length;
+  document.getElementById('liveTable').innerHTML =
+    `<tr class="loading-row"><td colspan="14"><span class="spinner"></span>Recupero prezzi (0/${toFetch.length})…</td></tr>`;
+  document.getElementById('errorBox').innerHTML = '';
+  document.getElementById('liveDot').style.background = '#f6ad55';
+  document.getElementById('liveStatus').textContent = `Aggiornamento (0/${toFetch.length})…`;
+
+  // Merge cache into pm so we render stale prices for non-fetched tickers immediately
+  const pm = {...cache};
+  let done = 0;
+
+  for (const pos of toFetch) {
+    const q = await scrapeSinglePrice(pos.yahoo);
+    if (q) { pm[pos.yahoo] = q; cache[pos.yahoo] = q; }
+    done++;
+    document.getElementById('liveStatus').textContent = `Aggiornamento (${done}/${toFetch.length})…`;
+    if (done < toFetch.length) await new Promise(r => setTimeout(r, 500)); // rate-limit
+  }
+
+  savePriceCache(cache);
+
+  const fetched = live.filter(p => pm[p.yahoo]?.regularMarketPrice != null).length;
   if (fetched > 0) {
     document.getElementById('liveDot').style.background = '#48bb78';
     const partial = fetched < live.length ? ` (${fetched}/${live.length})` : '';
@@ -1385,7 +1351,7 @@ async function fetchPrices() {
     document.getElementById('lastUpdate').textContent = new Date().toLocaleString('it-IT');
   } else {
     document.getElementById('errorBox').innerHTML =
-      `<div class="error-msg">⚠️ Impossibile recuperare prezzi — tutti i proxy non raggiungibili</div>`;
+      `<div class="error-msg">⚠️ Impossibile recuperare prezzi — proxy non raggiungibili</div>`;
     document.getElementById('liveDot').style.background = '#fc8181';
     document.getElementById('liveStatus').textContent = 'Errore connessione';
   }
@@ -1426,6 +1392,7 @@ function renderTable(pm) {
     const lp = q?.regularMarketPrice ?? null;
     const ch = q?.regularMarketChange ?? null;
     const cp = q?.regularMarketChangePercent ?? null;
+    const priceDate = q?.fetchedAt ? fmtPriceDate(q.fetchedAt) : '—';
     const mv = lp != null ? lp * pos.shares : null;
     const pl = mv != null ? mv - pos.totalCost : null;
     const pp = pl != null ? (pl/pos.totalCost)*100 : null;
@@ -1461,6 +1428,7 @@ function renderTable(pm) {
       <td style="text-align:right">${trPct!=null?`<span class="${tr>=0?'green':'red'}" style="font-weight:600">${tr>=0?'+':'-'}€${fmt(Math.abs(tr))}</span><br><span style="font-size:.68rem;color:${tr>=0?'#48bb78':'#fc8181'}">${trPct>=0?'+':''}${fmt(trPct)}%</span>`:'<span style="color:#4a5568">—</span>'}</td>
       <td style="text-align:right">${yoc!=null?`<span style="color:#f6ad55;font-size:.82rem">${fmt(yoc,2)}%</span>`:'<span style="color:#4a5568">—</span>'}</td>
       <td style="width:75px"><div class="gain-bar"><div class="bar-bg"><div class="bar-fill" style="width:${pp!=null?Math.min(Math.abs(pp),100):0}%;background:${bc}"></div></div><span style="font-size:.68rem;color:${bc}">${pp!=null?(pp>=0?'+':'')+fmt(pp,1)+'%':'—'}</span></div></td>
+      <td style="text-align:center;font-size:.7rem;color:#4a5568;white-space:nowrap">${priceDate}</td>
     </tr>`;
   }
 
@@ -1473,12 +1441,12 @@ function renderTable(pm) {
     <td style="text-align:right;color:#f6e05e;font-size:.75rem;font-weight:700">100%</td>
     <td style="text-align:right"><span class="${tpl>=0?'green':'red'}">${tpl>=0?'+':'-'}€${fmt(Math.abs(tpl))}</span></td>
     <td style="text-align:right"><span class="${tpp>=0?'green':'red'}">${tpp>=0?'+':''}${fmt(tpp)}%</span></td>
-    <td></td><td></td><td></td>
+    <td></td><td></td><td></td><td></td>
   </tr>`;
 
   // ── Separator ──
   if (closed.length) {
-    rows += `<tr><td colspan="13" style="padding:6px 9px;font-size:0.7rem;color:#4a5568;background:#0f1117;letter-spacing:.05em;text-transform:uppercase">
+    rows += `<tr><td colspan="14" style="padding:6px 9px;font-size:0.7rem;color:#4a5568;background:#0f1117;letter-spacing:.05em;text-transform:uppercase">
       — Posizioni chiuse (${closed.length}) —
     </td></tr>`;
   }
@@ -1507,6 +1475,7 @@ function renderTable(pm) {
       <td style="text-align:right;color:#4a5568">—</td>
       <td style="text-align:right;color:#4a5568">—</td>
       <td style="width:75px"><div class="gain-bar"><div class="bar-bg"><div class="bar-fill" style="width:${barW}%;background:${plColor}"></div></div><span style="font-size:.68rem;color:${plColor}">${c.realizedPLpct>=0?'+':''}${fmt(c.realizedPLpct,1)}%</span></div></td>
+      <td></td>
     </tr>`;
   }
 
@@ -1546,34 +1515,91 @@ function filterLiveTable(q) {
 // PLUSVALENZE / MINUSVALENZE
 // ════════════════════════════════════════════════
 function renderRealizedPL(byYear) {
-  const card = document.getElementById('realizedCard');
-  const tbody = document.getElementById('realizedTable');
+  const card    = document.getElementById('realizedCard');
+  const tbody   = document.getElementById('realizedTable');
+  const summary = document.getElementById('minusvSummary');
   if (!byYear.length) { card.style.display='none'; return; }
   card.style.display='block';
 
-  let totalPlusv=0, totalMinusv=0;
+  // ── Cedole certificati per anno (compensano le minusvalenze) ──
+  const cedoleByYear = {};
+  for (const r of G.rows||[]) {
+    if (r.cat !== 'COUPON') continue;
+    const y = r.date.getFullYear();
+    cedoleByYear[y] = (cedoleByYear[y]||0) + Math.abs(r.amount);
+  }
+
+  const nowYear = new Date().getFullYear();
+  let totalPlusv=0, totalCedole=0, totalMinusv=0;
+  let totalActive=0, expiringAmount=0, expiringYear=null;
   let html = '';
+
   for (const y of byYear) {
-    const net = y.plusv - y.minusv;
+    const cedole     = cedoleByYear[y.year] || 0;
+    const compensato = y.plusv + cedole;            // totale che riduce le minus
+    const net        = compensato - y.minusv;       // netto anno
     totalPlusv  += y.plusv;
+    totalCedole += cedole;
     totalMinusv += y.minusv;
+
+    // Scadenza / status (solo se ci sono minusvalenze)
+    let scadeHtml = '<td style="text-align:center;color:#2d3748">—</td>';
+    let statusHtml = '<td style="text-align:center;color:#2d3748">—</td>';
+    if (y.minusv > 0) {
+      const expiryYear = y.year + 4;
+      scadeHtml = `<td style="text-align:center;color:#718096;font-size:.78rem">31/12/${expiryYear}</td>`;
+      if (expiryYear < nowYear) {
+        statusHtml = `<td style="text-align:center"><span class="minus-badge expired">Scaduta</span></td>`;
+      } else if (expiryYear === nowYear) {
+        const residuo = Math.max(y.minusv - compensato, 0);
+        statusHtml = `<td style="text-align:center"><span class="minus-badge warning">⚠ Scade nel ${nowYear}</span></td>`;
+        if (residuo > 0) { expiringAmount += residuo; expiringYear = nowYear; }
+        totalActive += residuo;
+      } else {
+        const residuo = Math.max(y.minusv - compensato, 0);
+        const rem = expiryYear - nowYear;
+        statusHtml = `<td style="text-align:center"><span class="minus-badge active">Valida · ${rem} ann${rem===1?'o':'i'}</span></td>`;
+        totalActive += residuo;
+      }
+    }
+
     html += `<tr>
       <td style="font-weight:600;color:#a0aec0">${y.year}</td>
-      <td style="text-align:right;color:#48bb78">+€${fmt(y.plusv)}</td>
-      <td style="text-align:right;color:#fc8181">-€${fmt(y.minusv)}</td>
+      <td style="text-align:right;color:#68d391">${y.plusv>0?'+€'+fmt(y.plusv):'<span style="color:#4a5568">—</span>'}</td>
+      <td style="text-align:right;color:#b794f4">${cedole>0?'+€'+fmt(cedole):'<span style="color:#4a5568">—</span>'}</td>
+      <td style="text-align:right;color:#fc8181">${y.minusv>0?'-€'+fmt(y.minusv):'<span style="color:#4a5568">—</span>'}</td>
       <td style="text-align:right"><span class="${net>=0?'green':'red'}" style="font-weight:600">${net>=0?'+':'-'}€${fmt(Math.abs(net))}</span></td>
+      ${scadeHtml}${statusHtml}
       <td style="text-align:right;color:#4a5568;font-size:.75rem">${y.count} ${y.count===1?'vendita':'vendite'}</td>
     </tr>`;
   }
-  const totNet = totalPlusv - totalMinusv;
+
+  // ── Totale ──
+  const totComp = totalPlusv + totalCedole;
+  const totNet  = totComp - totalMinusv;
   html += `<tr style="border-top:2px solid #2d3748;font-weight:700">
     <td style="color:#a0aec0">Totale</td>
-    <td style="text-align:right;color:#48bb78">+€${fmt(totalPlusv)}</td>
+    <td style="text-align:right;color:#68d391">+€${fmt(totalPlusv)}</td>
+    <td style="text-align:right;color:#b794f4">+€${fmt(totalCedole)}</td>
     <td style="text-align:right;color:#fc8181">-€${fmt(totalMinusv)}</td>
     <td style="text-align:right"><span class="${totNet>=0?'green':'red'}">${totNet>=0?'+':'-'}€${fmt(Math.abs(totNet))}</span></td>
-    <td></td>
+    <td colspan="3"></td>
   </tr>`;
   tbody.innerHTML = html;
+
+  // ── Summary box ──
+  if (summary) {
+    let s = `<div style="font-size:0.78rem;color:#a0aec0">
+      <strong style="color:#e2e8f0">Minusvalenze residue compensabili: <span style="color:#fc8181">-€${fmt(totalActive)}</span></strong>`;
+    if (expiringAmount > 0) {
+      s += `&nbsp;·&nbsp;<span style="color:#f6ad55">⚠ €${fmt(expiringAmount)} scadono entro 31/12/${expiringYear}</span>`;
+    }
+    if (totalActive === 0 && totalMinusv > 0) {
+      s += `&nbsp;·&nbsp;<span style="color:#68d391">✓ Tutte compensate o scadute</span>`;
+    }
+    s += `</div>`;
+    summary.innerHTML = s;
+  }
 }
 
 // ════════════════════════════════════════════════
@@ -1732,64 +1758,6 @@ function closeTickerModal() {
   document.body.style.overflow = '';
 }
 
-// ════════════════════════════════════════════════
-// SCADENZA MINUSVALENZE
-// ════════════════════════════════════════════════
-function renderMinusvScadenza(byYear) {
-  const card    = document.getElementById('minusvCard');
-  const tbody   = document.getElementById('minusvTable');
-  const summary = document.getElementById('minusvSummary');
-  if (!card || !tbody) return;
-
-  // Only show rows with minusvalenze
-  const rows = byYear.filter(y => y.minusv > 0);
-  if (!rows.length) { card.style.display = 'none'; return; }
-  card.style.display = 'block';
-
-  const nowYear = new Date().getFullYear();
-  let html = '';
-  let totalActive = 0, expiringThisYear = 0;
-
-  for (const y of rows) {
-    const expiryYear = y.year + 4;
-    const net = y.plusv - y.minusv; // negative = net loss that year
-    let statusHtml, statusSort;
-
-    if (expiryYear < nowYear) {
-      statusHtml = `<span class="minus-badge expired">Scaduta</span>`;
-      statusSort = 0;
-    } else if (expiryYear === nowYear) {
-      statusHtml = `<span class="minus-badge warning">⚠ Scade nel ${nowYear}</span>`;
-      expiringThisYear += y.minusv;
-      totalActive += y.minusv;
-      statusSort = 2;
-    } else {
-      const rem = expiryYear - nowYear;
-      statusHtml = `<span class="minus-badge active">Valida · ${rem} ann${rem===1?'o':'i'}</span>`;
-      totalActive += y.minusv;
-      statusSort = 1;
-    }
-
-    html += `<tr>
-      <td style="font-weight:600;color:#a0aec0">${y.year}</td>
-      <td style="text-align:right;color:#fc8181">-€${fmt(y.minusv)}</td>
-      <td style="text-align:right;color:#68d391">${y.plusv>0?'+€'+fmt(y.plusv):'<span style="color:#4a5568">—</span>'}</td>
-      <td style="text-align:right"><span class="${net>=0?'green':'red'};font-weight:600">${net>=0?'+':'-'}€${fmt(Math.abs(net))}</span></td>
-      <td style="text-align:center;color:#a0aec0">31/12/${expiryYear}</td>
-      <td style="text-align:center">${statusHtml}</td>
-    </tr>`;
-  }
-  tbody.innerHTML = html;
-
-  // Summary box
-  let summaryHtml = `<div style="font-size:0.78rem;color:#a0aec0">
-    <strong style="color:#e2e8f0">Minusvalenze ancora valide: <span style="color:#fc8181">-€${fmt(totalActive)}</span></strong>`;
-  if (expiringThisYear > 0) {
-    summaryHtml += `&nbsp;·&nbsp;<span style="color:#f6ad55">⚠ €${fmt(expiringThisYear)} scadono entro il 31/12/${nowYear}</span>`;
-  }
-  summaryHtml += `</div>`;
-  summary.innerHTML = summaryHtml;
-}
 
 // ════════════════════════════════════════════════
 // MAIN RENDER
@@ -1946,7 +1914,6 @@ function renderDashboard(rows) {
   fillRank('etfTable', payers.etf, C.green);
   fillCoupons(payers.coup);
   renderRealizedPL(realizedByYear);
-  renderMinusvScadenza(realizedByYear);
   renderDivCalendar();
 
   // Show dashboard
