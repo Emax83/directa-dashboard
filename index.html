@@ -6,13 +6,11 @@
 
 <!-- ── PRIMARY META ── -->
 <title>Portafoglio analisi DIRECTA – Dashboard gratuita per investitori</title>
-<meta name="description" content="Dashboard gratuita per analizzare il tuo portafoglio Directa SIM. Carica il CSV dei movimenti e visualizza posizioni live, dividendi, capital gain, minusvalenze, composizione per asset class, settore e geografia. 100% client-side, nessun dato memorizzato.">
-<meta name="keywords" content="directa sim, portafoglio, dashboard, dividendi, capital gain, minusvalenze, plusvalenze, ETF, azioni, certificati, investimenti, analisi portafoglio, trading, borsa italiana, rendimento, yield">
+<meta name="description" content="Dashboard gratuita per analizzare il portafoglio Directa SIM: posizioni live, dividendi, capital gain, minusvalenze e composizione per asset class. 100% client-side.">
 <meta name="author" content="emax83dev">
 <meta name="robots" content="index, follow">
-<meta name="language" content="Italian">
-<meta name="revisit-after" content="7 days">
 <link rel="canonical" href="https://directa-dashboard.vercel.app">
+<link rel="sitemap" type="application/xml" href="/sitemap.xml">
 
 <!-- ── OPEN GRAPH (Facebook, LinkedIn, WhatsApp) ── -->
 <meta property="og:type" content="website">
@@ -94,8 +92,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .upload-card.drag-over{border-color:#4299e1;background:#162032}
 .upload-logo{height:48px;width:auto;margin-bottom:16px;object-fit:contain;display:block;margin-left:auto;margin-right:auto}
 @media(min-width:640px){.upload-logo{height:64px;margin-bottom:20px}}
-.upload-card h2{font-size:1.25rem;color:#fff;margin-bottom:10px}
-@media(min-width:640px){.upload-card h2{font-size:1.5rem}}
+.upload-card h1{font-size:1.25rem;color:#fff;margin-bottom:10px}
+@media(min-width:640px){.upload-card h1{font-size:1.5rem}}
 .upload-card p{color:#718096;font-size:0.85rem;line-height:1.6;margin-bottom:6px}
 @media(min-width:640px){.upload-card p{font-size:0.9rem}}
 .upload-btn{margin-top:20px;background:#1e3a5f;border:1px solid #2b6cb0;color:#63b3ed;border-radius:8px;padding:10px 28px;font-size:0.9rem;cursor:pointer;transition:all .15s;width:100%}
@@ -296,7 +294,7 @@ a.ticker-badge:hover{background:#2b6cb0;color:#fff}
 <div id="uploadZone">
   <div class="upload-card" id="dropArea">
     <img src="logo.png" alt="Portafoglio analisi DIRECTA" class="upload-logo">
-    <h2>Portafoglio analisi DIRECTA</h2>
+    <h1>Portafoglio analisi DIRECTA</h1>
     <p style="font-size:0.95rem;color:#a0aec0;margin-top:6px;margin-bottom:18px">
       Analizza dividendi, capital gain, composizione e andamento del tuo portafoglio Directa in modo visivo e interattivo.
       Carica il CSV dei movimenti e il dashboard si costruisce istantaneamente: grafici progressivi, prezzi live da Yahoo Finance, torte per asset class, settore e geografia.
@@ -322,6 +320,18 @@ a.ticker-badge:hover{background:#2b6cb0;color:#fff}
     <input type="file" id="csvFile" accept=".csv,.txt" style="display:none">
     <p class="upload-hint" style="margin-top:14px">Directa → Reportistica → Movimenti conto → Esporta CSV</p>
     <div class="upload-error" id="uploadErr"></div>
+
+    <section style="margin-top:28px;border-top:1px solid #2d3748;padding-top:20px;text-align:left">
+      <p style="font-size:0.8rem;color:#4a5568;line-height:1.7;margin-bottom:10px">
+        <strong style="color:#718096">Analisi portafoglio Directa SIM</strong> — Strumento gratuito per investitori che operano su Directa SIM. Importa il CSV dei movimenti di conto e ottieni immediatamente la panoramica completa: posizioni aperte con prezzi live, storico dividendi per azione ed ETF, cedole dei certificati BNP Paribas, plusvalenze e minusvalenze anno per anno secondo le regole del risparmio amministrato italiano.
+      </p>
+      <p style="font-size:0.8rem;color:#4a5568;line-height:1.7;margin-bottom:10px">
+        Il dashboard calcola automaticamente il <strong style="color:#718096">Yield on Cost</strong> di ogni strumento, la composizione del portafoglio per asset class, settore geografico e tipo (azioni, ETF, certificati), e la compensazione fiscale delle minusvalenze con plusvalenze e cedole entro i 4 anni previsti dalla normativa.
+      </p>
+      <p style="font-size:0.8rem;color:#4a5568;line-height:1.7">
+        I tuoi dati non lasciano mai il browser: nessun server, nessun upload, nessun account. I prezzi vengono aggiornati una volta al giorno tramite Yahoo Finance e salvati localmente.
+      </p>
+    </section>
   </div>
 </div>
 
