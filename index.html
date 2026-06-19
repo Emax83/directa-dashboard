@@ -392,7 +392,8 @@ a.ticker-badge:hover{background:#2b6cb0;color:#fff}
     <div class="kpi"><div class="label">Reddito Netto</div><div class="value green" id="kpiNet">—</div><div class="sub">Incassato</div></div>
     <div class="kpi"><div class="label">Costo Posizioni</div><div class="value yellow" id="kpiCost">—</div><div class="sub">Costo medio ponderato</div></div>
     <div class="kpi"><div class="label">Valore di Mercato</div><div class="value teal" id="kpiMkt">—</div><div class="sub">Prezzi in tempo reale</div></div>
-    <div class="kpi"><div class="label">Plus/Minusvalenza</div><div class="value" id="kpiPL">—</div><div class="sub" id="kpiPLpct">—</div></div>
+    <div class="kpi"><div class="label">Plus/Minusvalenza</div><div class="value" id="kpiPL">—</div><div class="sub">Latente vs costo</div></div>
+    <div class="kpi"><div class="label">P&amp;L %</div><div class="value" id="kpiPLpct">—</div><div class="sub">vs prezzo medio</div></div>
     <div class="kpi"><div class="label">Posizioni Attive</div><div class="value blue" id="kpiPos">—</div><div class="sub" id="kpiPosSub">—</div></div>
     <div class="kpi"><div class="label">Dividend Yield</div><div class="value orange" id="kpiYield">—</div><div class="sub" id="kpiYieldSub">Sul costo portafoglio</div></div>
     <div class="kpi"><div class="label">Liquidità</div><div class="value" id="kpiLiq">—</div><div class="sub" id="kpiLiqSub">Saldo cassa</div></div>
@@ -1817,7 +1818,9 @@ function renderTable(pm) {
   const plEl = document.getElementById('kpiPL');
   plEl.textContent = (tpl>=0?'+€':'-€')+fmt(Math.abs(tpl));
   plEl.className = 'value '+(tpl>=0?'green':'red');
-  document.getElementById('kpiPLpct').textContent = (tpp>=0?'+':'')+fmt(tpp)+'% vs costo';
+  const plPctEl = document.getElementById('kpiPLpct');
+  plPctEl.textContent = (tpp>=0?'+':'')+fmt(tpp)+'%';
+  plPctEl.className = 'value '+(tpp>=0?'green':'red');
 }
 
 function filterLiveTable(q) {
