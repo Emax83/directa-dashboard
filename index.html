@@ -6,13 +6,11 @@
 
 <!-- ── PRIMARY META ── -->
 <title>Portafoglio analisi DIRECTA – Dashboard gratuita per investitori</title>
-<meta name="description" content="Dashboard gratuita per analizzare il tuo portafoglio Directa SIM. Carica il CSV dei movimenti e visualizza posizioni live, dividendi, capital gain, minusvalenze, composizione per asset class, settore e geografia. 100% client-side, nessun dato memorizzato.">
-<meta name="keywords" content="directa sim, portafoglio, dashboard, dividendi, capital gain, minusvalenze, plusvalenze, ETF, azioni, certificati, investimenti, analisi portafoglio, trading, borsa italiana, rendimento, yield">
+<meta name="description" content="Dashboard gratuita per analizzare il portafoglio Directa SIM: posizioni live, dividendi, capital gain, minusvalenze e composizione per asset class. 100% client-side.">
 <meta name="author" content="emax83dev">
 <meta name="robots" content="index, follow">
-<meta name="language" content="Italian">
-<meta name="revisit-after" content="7 days">
 <link rel="canonical" href="https://directa-dashboard.vercel.app">
+<link rel="sitemap" type="application/xml" href="/sitemap.xml">
 
 <!-- ── OPEN GRAPH (Facebook, LinkedIn, WhatsApp) ── -->
 <meta property="og:type" content="website">
@@ -84,6 +82,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{max-width:100vw;overflow-x:hidden}
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#0f1117;color:#e2e8f0;min-height:100vh}
 
 /* ── UPLOAD ZONE ── */
@@ -93,8 +92,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .upload-card.drag-over{border-color:#4299e1;background:#162032}
 .upload-logo{height:48px;width:auto;margin-bottom:16px;object-fit:contain;display:block;margin-left:auto;margin-right:auto}
 @media(min-width:640px){.upload-logo{height:64px;margin-bottom:20px}}
-.upload-card h2{font-size:1.25rem;color:#fff;margin-bottom:10px}
-@media(min-width:640px){.upload-card h2{font-size:1.5rem}}
+.upload-card h1{font-size:1.25rem;color:#fff;margin-bottom:10px}
+@media(min-width:640px){.upload-card h1{font-size:1.5rem}}
 .upload-card p{color:#718096;font-size:0.85rem;line-height:1.6;margin-bottom:6px}
 @media(min-width:640px){.upload-card p{font-size:0.9rem}}
 .upload-btn{margin-top:20px;background:#1e3a5f;border:1px solid #2b6cb0;color:#63b3ed;border-radius:8px;padding:10px 28px;font-size:0.9rem;cursor:pointer;transition:all .15s;width:100%}
@@ -256,13 +255,41 @@ a.ticker-badge:hover{background:#2b6cb0;color:#fff}
 .hdr-btn.danger:hover{background:#742a2a;color:#fff}
 .data-info{font-size:0.68rem;color:#4a5568;white-space:nowrap}
 .hdr-actions{display:flex;align-items:center;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+@media(max-width:639px){.data-info{flex-basis:100%;text-align:left}}
 /* ── FOOTER ── */
 .site-footer{background:#1a1d2e;border-top:1px solid #2d3748;padding:12px 14px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;font-size:0.72rem;color:#4a5568}
 @media(min-width:640px){.site-footer{padding:16px 28px;font-size:0.76rem}}
 .site-footer a{color:#718096;text-decoration:none;transition:color .15s}
 .site-footer a:hover{color:#a0aec0}
 .footer-sep{color:#2d3748;margin:0 8px}
+.footer-right{display:flex;align-items:center;gap:10px}
+.ft-short{display:none}
+@media(max-width:639px){
+  .footer-copyright{flex-basis:100%}
+  .footer-right{flex-basis:100%;justify-content:space-between}
+  .ft-full{display:none}
+  .ft-short{display:inline}
+}
 
+
+/* ── LISTA MOVIMENTI ── */
+.mov-search{width:100%;padding:8px 12px;background:#0f1117;border:1px solid #2d3748;border-radius:6px;color:#e2e8f0;font-size:0.82rem;margin-bottom:10px;outline:none;transition:border-color .15s}
+.mov-search:focus{border-color:#4299e1}
+.mov-table-wrap{overflow-y:auto;max-height:500px;border-radius:6px;border:1px solid #2d3748}
+.mov-table-wrap table{width:100%;border-collapse:collapse;table-layout:auto}
+.mov-table-wrap thead th{position:sticky;top:0;background:#1a1d2e;z-index:2;padding:8px 10px;font-size:.72rem;color:#718096;text-transform:uppercase;letter-spacing:.04em;border-bottom:1px solid #2d3748;white-space:nowrap}
+.mov-table-wrap tbody tr{border-bottom:1px solid #1a1d2e;transition:background .1s}
+.mov-table-wrap tbody tr:hover{background:#1a1d2e}
+.mov-table-wrap tbody td{padding:6px 10px;font-size:.8rem;vertical-align:middle}
+.cat-badge{display:inline-block;padding:2px 7px;border-radius:4px;font-size:.68rem;font-weight:600;letter-spacing:.02em;white-space:nowrap}
+.cat-BUY{background:#1a3a5f;color:#63b3ed}
+.cat-SELL{background:#3a1f1f;color:#fc8181}
+.cat-DIVIDEND{background:#1a3a2a;color:#68d391}
+.cat-ETF_INCOME{background:#1a3a2a;color:#48bb78}
+.cat-COUPON{background:#2d2050;color:#b794f4}
+.cat-COMMISSION,.cat-TOBIN{background:#2d2d2d;color:#718096}
+.cat-TAX{background:#3a2a1a;color:#f6ad55}
+.cat-DEPOSIT{background:#1a2a3a;color:#4299e1}
 /* ── MODAL ── */
 .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.75);backdrop-filter:blur(3px);z-index:1000;display:flex;align-items:flex-end;justify-content:center;padding:0}
 @media(min-width:640px){.modal-overlay{align-items:center;padding:24px}}
@@ -286,7 +313,7 @@ a.ticker-badge:hover{background:#2b6cb0;color:#fff}
 <div id="uploadZone">
   <div class="upload-card" id="dropArea">
     <img src="logo.png" alt="Portafoglio analisi DIRECTA" class="upload-logo">
-    <h2>Portafoglio analisi DIRECTA</h2>
+    <h1>Portafoglio analisi DIRECTA</h1>
     <p style="font-size:0.95rem;color:#a0aec0;margin-top:6px;margin-bottom:18px">
       Analizza dividendi, capital gain, composizione e andamento del tuo portafoglio Directa in modo visivo e interattivo.
       Carica il CSV dei movimenti e il dashboard si costruisce istantaneamente: grafici progressivi, prezzi live da Yahoo Finance, torte per asset class, settore e geografia.
@@ -312,6 +339,18 @@ a.ticker-badge:hover{background:#2b6cb0;color:#fff}
     <input type="file" id="csvFile" accept=".csv,.txt" style="display:none">
     <p class="upload-hint" style="margin-top:14px">Directa → Reportistica → Movimenti conto → Esporta CSV</p>
     <div class="upload-error" id="uploadErr"></div>
+
+    <section style="margin-top:28px;border-top:1px solid #2d3748;padding-top:20px;text-align:left">
+      <p style="font-size:0.8rem;color:#4a5568;line-height:1.7;margin-bottom:10px">
+        <strong style="color:#718096">Analisi portafoglio Directa SIM</strong> — Strumento gratuito per investitori che operano su Directa SIM. Importa il CSV dei movimenti di conto e ottieni immediatamente la panoramica completa: posizioni aperte con prezzi live, storico dividendi per azione ed ETF, cedole dei certificati BNP Paribas, plusvalenze e minusvalenze anno per anno secondo le regole del risparmio amministrato italiano.
+      </p>
+      <p style="font-size:0.8rem;color:#4a5568;line-height:1.7;margin-bottom:10px">
+        Il dashboard calcola automaticamente il <strong style="color:#718096">Yield on Cost</strong> di ogni strumento, la composizione del portafoglio per asset class, settore geografico e tipo (azioni, ETF, certificati), e la compensazione fiscale delle minusvalenze con plusvalenze e cedole entro i 4 anni previsti dalla normativa.
+      </p>
+      <p style="font-size:0.8rem;color:#4a5568;line-height:1.7">
+        I tuoi dati non lasciano mai il browser: nessun server, nessun upload, nessun account. I prezzi vengono aggiornati una volta al giorno tramite Yahoo Finance e salvati localmente.
+      </p>
+    </section>
   </div>
 </div>
 
@@ -357,6 +396,7 @@ a.ticker-badge:hover{background:#2b6cb0;color:#fff}
     <div class="kpi"><div class="label">Posizioni Attive</div><div class="value blue" id="kpiPos">—</div><div class="sub" id="kpiPosSub">—</div></div>
     <div class="kpi"><div class="label">Dividend Yield</div><div class="value orange" id="kpiYield">—</div><div class="sub" id="kpiYieldSub">Sul costo portafoglio</div></div>
     <div class="kpi"><div class="label">Liquidità</div><div class="value" id="kpiLiq">—</div><div class="sub" id="kpiLiqSub">Saldo cassa</div></div>
+    <div class="kpi"><div class="label">Minus residue</div><div class="value red" id="kpiMinus">—</div><div class="sub" id="kpiMinusSub">Da recuperare</div></div>
   </div>
 
   <!-- DYNAMIC PROGRESSIVE CHARTS -->
@@ -416,18 +456,22 @@ a.ticker-badge:hover{background:#2b6cb0;color:#fff}
   <div class="charts-2">
     <div class="card">
       <h3 class="section-title">Top Azioni — Dividendi Lordi (€)</h3>
-      <table><thead><tr><th>Ticker</th><th>Importo</th><th>Peso</th></tr></thead><tbody id="divTable"></tbody></table>
+      <table><thead><tr><th>Ticker</th><th>Importo</th><th title="% sul totale reddito lordo di tutti gli strumenti">Peso tot.</th><th title="Reddito totale / costo medio di carico">YoC%</th></tr></thead><tbody id="divTable"></tbody></table>
     </div>
     <div class="card">
       <h3 class="section-title">Top ETF — Proventi Lordi (€)</h3>
-      <table><thead><tr><th>Ticker</th><th>Importo</th><th>Peso</th></tr></thead><tbody id="etfTable"></tbody></table>
+      <table><thead><tr><th>Ticker</th><th>Importo</th><th title="% sul totale reddito lordo di tutti gli strumenti">Peso tot.</th><th title="Reddito totale / costo medio di carico">YoC%</th></tr></thead><tbody id="etfTable"></tbody></table>
     </div>
   </div>
 
   <div class="charts-2">
     <div class="card">
       <h3 class="section-title">Cedole Certificati (€)</h3>
-      <table><thead><tr><th>Ticker</th><th>Descrizione</th><th>Totale</th></tr></thead><tbody id="coupTable"></tbody></table>
+      <table style="table-layout:fixed">
+        <colgroup><col style="width:22%"><col style="width:42%"><col style="width:20%"><col style="width:16%"></colgroup>
+        <thead><tr><th>Ticker</th><th>Descrizione</th><th>Totale</th><th title="Cedole totali / costo medio di carico">Premio%</th></tr></thead>
+        <tbody id="coupTable"></tbody>
+      </table>
     </div>
     <div class="card">
       <h3 class="section-title">Costi e Oneri (€)</h3>
@@ -499,7 +543,7 @@ a.ticker-badge:hover{background:#2b6cb0;color:#fff}
         <thead>
           <tr>
             <th>Anno</th>
-            <th style="text-align:right">Plusvalenze</th>
+            <th style="text-align:right" title="Plusvalenze compensabili: Azioni, ETC, Certificati. Le plusvalenze ETF (reddito da capitale) non compensano minusvalenze.">Plus comp.</th>
             <th style="text-align:right" title="Cedole certificati — compensano le minusvalenze">Cedole cert.</th>
             <th style="text-align:right">Minusvalenze</th>
             <th style="text-align:right">Netto anno</th>
@@ -515,16 +559,40 @@ a.ticker-badge:hover{background:#2b6cb0;color:#fff}
     <div style="margin-top:12px;padding:10px 12px;background:#0f1117;border-radius:6px;border-left:3px solid #f6ad55" id="minusvSummary"></div>
   </div>
 
+
+  <!-- ══ LISTA MOVIMENTI ══ -->
+  <div class="card" id="movimentiCard" style="display:none">
+    <h3 class="section-title">📋 Lista Movimenti</h3>
+    <input type="text" id="movSearch" class="mov-search" placeholder="🔍 Cerca per ticker, ISIN, descrizione o tipo movimento…" oninput="renderMovimenti()">
+    <div class="mov-table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Data</th>
+            <th>Ticker</th>
+            <th>ISIN</th>
+            <th>Descrizione</th>
+            <th>Tipo</th>
+            <th style="text-align:right">Q.tà</th>
+            <th style="text-align:right">Importo</th>
+          </tr>
+        </thead>
+        <tbody id="movimentiBody"></tbody>
+      </table>
+    </div>
+    <div id="movCount" style="margin-top:8px;font-size:.72rem;color:#4a5568;text-align:right"></div>
+  </div>
+
 </div><!-- /container -->
 </div><!-- /dashboard -->
 
 <!-- ══ FOOTER ══ -->
 <footer class="site-footer">
-  <span>© 2026 <a href="https://www.emax83dev.it" target="_blank" rel="noopener">emax83dev</a></span>
-  <button onclick="openDonateModal()" style="background:none;border:1px solid #2d3748;border-radius:20px;color:#718096;padding:5px 14px;font-size:0.75rem;cursor:pointer;transition:all .2s;line-height:1.4" onmouseover="this.style.borderColor='#f6ad55';this.style.color='#f6ad55'" onmouseout="this.style.borderColor='#2d3748';this.style.color='#718096'">☕ Ti piace la web app?</button>
-  <span>
-    <a href="#" onclick="openPrivacyModal();return false;">Termini e condizioni & Privacy Policy</a>
-  </span>
+  <span class="footer-copyright">Directa Dashboard © 2026 &nbsp;·&nbsp; <a href="https://www.emax83dev.it" target="_blank" rel="noopener">emax83dev</a> &nbsp;·&nbsp; v1.1</span>
+  <div class="footer-right">
+    <button onclick="openDonateModal()" style="background:none;border:1px solid #2d3748;border-radius:20px;color:#718096;padding:5px 14px;font-size:0.75rem;cursor:pointer;transition:all .2s;line-height:1.4" onmouseover="this.style.borderColor='#f6ad55';this.style.color='#f6ad55'" onmouseout="this.style.borderColor='#2d3748';this.style.color='#718096'">☕ <span class="ft-full">Ti piace la web app?</span><span class="ft-short">Ti piace</span></button>
+    <a href="#" onclick="openPrivacyModal();return false;"><span class="ft-full">Termini e condizioni & Privacy Policy</span><span class="ft-short">T&C-Privacy</span></a>
+  </div>
 </footer>
 
 <!-- ══ CLEAR DATA CONFIRM MODAL ══ -->
@@ -855,7 +923,7 @@ function buildPositions(rows) {
       hist[t].soldQty      += r.qty;
       hist[t].totalProceeds += proceeds;
 
-      realized.push({date:r.date, year:r.date.getFullYear(), ticker:t, pl, proceeds, costBasis, qty:r.qty});
+      realized.push({date:r.date, year:r.date.getFullYear(), ticker:t, pl, proceeds, costBasis, qty:r.qty, instrType: meta.type});
 
       if (live[t].shares < 0.01) { live[t].shares = 0; live[t].totalCost = 0; }
     }
@@ -890,9 +958,14 @@ function buildRealizedByYear(realized) {
   const yr = {};
   for (const r of realized) {
     const y = r.year;
-    if (!yr[y]) yr[y] = {year:y, plusv:0, minusv:0, count:0};
-    if (r.pl >= 0) yr[y].plusv  += r.pl;
-    else           yr[y].minusv += Math.abs(r.pl);
+    if (!yr[y]) yr[y] = {year:y, plusv:0, plusvComp:0, minusv:0, count:0};
+    if (r.pl >= 0) {
+      yr[y].plusv += r.pl;
+      // ETF plusvalenze = reddito da capitale → NON compensano minusvalenze
+      if (r.instrType !== 'ETF') yr[y].plusvComp += r.pl;
+    } else {
+      yr[y].minusv += Math.abs(r.pl);
+    }
     yr[y].count++;
   }
   return Object.values(yr).sort((a,b) => a.year - b.year);
@@ -952,18 +1025,31 @@ function buildYearly(monthly) {
   return Object.values(yr).sort((a,b) => a.year.localeCompare(b.year));
 }
 
-function buildTopPayers(rows) {
-  const div={}, etf={}, coup={};
+function buildTopPayers(rows, openPositions = []) {
+  const div={}, etf={}, coup={}, rawCost={};
   for (const r of rows) {
-    const t = r.ticker || '?';
+    const t = TICKER_ALIASES[r.ticker] || r.ticker || '?';
     if (r.cat==='DIVIDEND')   div[t]  = (div[t]||0)  + r.amount;
     if (r.cat==='ETF_INCOME') etf[t]  = (etf[t]||0)  + r.amount;
     if (r.cat==='COUPON')     coup[t] = (coup[t]||0) + r.amount;
+    if (r.cat==='BUY')        rawCost[t] = (rawCost[t]||0) + Math.abs(r.amount);
   }
-  const top = (obj,n=10) => Object.entries(obj)
+  // Prefer FIFO cost from open positions over historical BUY sum
+  const costMap = {...rawCost};
+  for (const p of openPositions) {
+    if (p.totalCost > 0) costMap[p.ticker] = p.totalCost;
+  }
+  const totalGross = [div, etf, coup].reduce((s, obj) =>
+    s + Object.values(obj).reduce((a, v) => a + v, 0), 0);
+
+  const top = (obj, n=10) => Object.entries(obj)
     .filter(([,v])=>v>0)
     .sort((a,b)=>b[1]-a[1]).slice(0,n)
-    .map(([t,v])=>({t,v}));
+    .map(([t,v])=>({
+      t, v,
+      peso: totalGross > 0 ? v / totalGross * 100 : 0,
+      yoc:  costMap[t]  > 0 ? v / costMap[t]  * 100 : null,
+    }));
   return {div: top(div), etf: top(etf), coup: top(coup)};
 }
 
@@ -1020,6 +1106,8 @@ function selectYear(btn, year) {
   btn.classList.add('active');
   updateDynCharts();
   updateKPIs();
+  renderRealizedPL(G.realizedByYear || []);
+  renderMovimenti();
 }
 
 function getChartSeries(year) {
@@ -1149,6 +1237,26 @@ function updateKPIs() {
     liqEl.className   = 'value ' + (liq >= 0 ? (liq < 500 ? 'yellow' : 'green') : 'red');
     document.getElementById('kpiLiqSub').textContent =
       year === 'tutto' ? 'Saldo cassa attuale' : `Saldo al 31/12/${year}`;
+  }
+
+  // ── Minusvalenze residue compensabili ──
+  const zainet = computeZainetto();
+  const nowYr  = new Date().getFullYear();
+  const totMin = Object.entries(zainet)
+    .filter(([y]) => Number(y) + 4 >= nowYr)
+    .reduce((s,[,v]) => s + v, 0);
+  const kpiMinEl  = document.getElementById('kpiMinus');
+  const kpiMinSub = document.getElementById('kpiMinusSub');
+  if (kpiMinEl) {
+    if (totMin > 0.005) {
+      kpiMinEl.textContent  = '−€' + fmt(totMin);
+      kpiMinEl.className    = 'value red';
+      kpiMinSub.textContent = 'Compensabili entro 4 anni';
+    } else {
+      kpiMinEl.textContent  = '€ 0';
+      kpiMinEl.className    = 'value green';
+      kpiMinSub.textContent = 'Tutte compensate ✓';
+    }
   }
 }
 
@@ -1292,19 +1400,22 @@ function fillRank(id, data, color) {
   const b = document.getElementById(id);
   b.innerHTML = '';
   data.forEach(x => {
-    const p = (x.v/max*100).toFixed(0);
+    const barW   = (x.v / max * 100).toFixed(0);
+    const pesoStr = x.peso != null ? x.peso.toFixed(1) + '%' : '—';
+    const yocStr  = x.yoc  != null ? x.yoc.toFixed(2)  + '%' : '—';
     const isin = isinMap[x.t] || '';
     b.innerHTML += `<tr>
       <td><strong>${x.t}</strong>${isin?`<br><span style="font-size:.62rem;color:#4a5568;font-family:monospace">${isin}</span>`:''}</td>
       <td style="color:${color}">€${x.v.toFixed(2)}</td>
-      <td style="width:110px">
+      <td style="width:120px">
         <div class="bar-cell">
-          <div class="bar-bg2"><div class="bar-fill2" style="width:${p}%;background:${color}"></div></div>
-          <span style="font-size:.7rem;color:#718096;min-width:28px">${p}%</span>
+          <div class="bar-bg2"><div class="bar-fill2" style="width:${barW}%;background:${color}"></div></div>
+          <span style="font-size:.7rem;color:#718096;min-width:32px">${pesoStr}</span>
         </div>
-      </td></tr>`;
+      </td>
+      <td style="font-size:.75rem;color:#f6ad55;text-align:right;white-space:nowrap">${yocStr}</td></tr>`;
   });
-  if (!data.length) b.innerHTML = '<tr><td colspan="3" style="color:#4a5568;padding:10px">Nessun dato</td></tr>';
+  if (!data.length) b.innerHTML = '<tr><td colspan="4" style="color:#4a5568;padding:10px">Nessun dato</td></tr>';
 }
 
 function fillCoupons(data) {
@@ -1315,12 +1426,14 @@ function fillCoupons(data) {
   data.forEach(x => {
     const isin = isinMap[x.t] || '';
     const desc = descMap[x.t] || '';
+    const premioStr = x.yoc != null ? x.yoc.toFixed(2) + '%' : '—';
     b.innerHTML += `<tr>
       <td><strong style="color:${C.purple}">${x.t}</strong>${isin?`<br><span style="font-size:.62rem;color:#4a5568;font-family:monospace">${isin}</span>`:''}</td>
-      <td style="font-size:.76rem;color:#a0aec0;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${desc}">${desc || '—'}</td>
-      <td style="color:${C.purple}">€${x.v.toFixed(2)}</td></tr>`;
+      <td style="font-size:.76rem;color:#a0aec0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${desc}">${desc || '—'}</td>
+      <td style="color:${C.purple}">€${x.v.toFixed(2)}</td>
+      <td style="font-size:.75rem;color:#f6ad55;text-align:right;white-space:nowrap">${premioStr}</td></tr>`;
   });
-  if (!data.length) b.innerHTML = '<tr><td colspan="3" style="color:#4a5568;padding:10px">Nessun dato</td></tr>';
+  if (!data.length) b.innerHTML = '<tr><td colspan="4" style="color:#4a5568;padding:10px">Nessun dato</td></tr>';
 }
 
 // ════════════════════════════════════════════════
@@ -1354,7 +1467,11 @@ function savePriceCache(cache) {
 }
 function isPriceFresh(entry) {
   if (!entry?.fetchedAt) return false;
-  return (Date.now() - new Date(entry.fetchedAt).getTime()) < 24 * 60 * 60 * 1000;
+  const d = new Date(entry.fetchedAt);
+  const now = new Date();
+  return d.getFullYear() === now.getFullYear() &&
+         d.getMonth()    === now.getMonth()    &&
+         d.getDate()     === now.getDate();
 }
 
 /** Scrape a single Yahoo Finance quote page for price data */
@@ -1504,7 +1621,10 @@ async function fetchPrices(forceRefresh = false) {
 
   if (total === 0) {
     document.getElementById('liveDot').style.background = '#48bb78';
-    document.getElementById('liveStatus').textContent = 'Cache · ' + new Date().toLocaleTimeString('it-IT');
+    const allEntries = [...liveYahoo.map(p => cache[p.yahoo]), ...liveBNP.map(p => cache[p.isin])].filter(Boolean);
+    const lastFetch = allEntries.reduce((max, e) => e.fetchedAt > max ? e.fetchedAt : max, '');
+    const lastStr = lastFetch ? new Date(lastFetch).toLocaleTimeString('it-IT', {hour:'2-digit', minute:'2-digit'}) : '?';
+    document.getElementById('liveStatus').textContent = `Cache oggi ${lastStr}`;
     return;
   }
 
@@ -1517,7 +1637,7 @@ async function fetchPrices(forceRefresh = false) {
   // ── Yahoo Finance ──────────────────────────────────────────
   for (const pos of toFetchYahoo) {
     const q = await scrapeSinglePrice(pos.yahoo);
-    if (q) { pm[pos.yahoo] = q; cache[pos.yahoo] = q; patchRowPrice(pos.ticker, q); }
+    if (q) { pm[pos.yahoo] = q; cache[pos.yahoo] = q; patchRowPrice(pos.ticker, q); savePriceCache(cache); }
     done++;
     document.getElementById('liveStatus').textContent = `Aggiornamento (${done}/${total})…`;
     if (done < total) await new Promise(r => setTimeout(r, 500));
@@ -1526,13 +1646,11 @@ async function fetchPrices(forceRefresh = false) {
   // ── BNP Paribas ────────────────────────────────────────────
   for (const pos of toFetchBNP) {
     const q = await scrapeBNPPrice(pos.isin);
-    if (q) { pm[pos.isin] = q; cache[pos.isin] = q; patchRowPrice(pos.ticker, q); }
+    if (q) { pm[pos.isin] = q; cache[pos.isin] = q; patchRowPrice(pos.ticker, q); savePriceCache(cache); }
     done++;
     document.getElementById('liveStatus').textContent = `Aggiornamento (${done}/${total})…`;
     if (done < total) await new Promise(r => setTimeout(r, 500));
   }
-
-  savePriceCache(cache);
 
   // ── Render finale: aggiorna KPI, Peso%, Total Return ───────
   renderTable(pm);
@@ -1732,8 +1850,11 @@ function computeZainetto() {
   const events = [];
 
   // Plusvalenze/minusvalenze da vendite
+  // Regola italiana: ETF plusvalenze = reddito da capitale → NON compensano minus
+  // ETF minusvalenze = reddito diverso → entrano nello zainetto (asimmetria!)
   for (const r of realized) {
     if (Math.abs(r.pl) < EPS) continue;
+    if (r.pl > 0 && r.instrType === 'ETF') continue; // ETF gain: non compensa
     events.push({ date: r.date, year: r.year,
                   type: r.pl > 0 ? 'gain' : 'loss', amount: Math.abs(r.pl) });
   }
@@ -1809,8 +1930,8 @@ function renderRealizedPL(byYear) {
   for (const Y of sortedYears) {
     const d      = yearIndex[Y];
     const cedole = cedoleByYear[Y] || 0;
-    const net    = d.plusv + cedole - d.minusv;
-    totalPlusv  += d.plusv;
+    const net    = d.plusvComp + cedole - d.minusv;
+    totalPlusv  += d.plusvComp;
     totalCedole += cedole;
     totalMinusv += d.minusv;
 
@@ -1851,7 +1972,7 @@ function renderRealizedPL(byYear) {
 
     html += `<tr>
       <td style="font-weight:600;color:#a0aec0">${Y}</td>
-      <td style="text-align:right;color:#68d391">${d.plusv>0?'+€'+fmt(d.plusv):'<span style="color:#4a5568">—</span>'}</td>
+      <td style="text-align:right;color:#68d391" title="Escluse plusvalenze ETF (reddito da capitale)">${d.plusvComp>0?'+€'+fmt(d.plusvComp):'<span style="color:#4a5568">—</span>'}</td>
       <td style="text-align:right;color:#b794f4">${cedole>0?'+€'+fmt(cedole):'<span style="color:#4a5568">—</span>'}</td>
       <td style="text-align:right;color:#fc8181">${d.minusv>0?'-€'+fmt(d.minusv):'<span style="color:#4a5568">—</span>'}</td>
       <td style="text-align:right"><span class="${net>=0?'green':'red'}" style="font-weight:600">${net>=0?'+':'-'}€${fmt(Math.abs(net))}</span></td>
@@ -1864,7 +1985,7 @@ function renderRealizedPL(byYear) {
   const totNet = (totalPlusv + totalCedole) - totalMinusv;
   html += `<tr style="border-top:2px solid #2d3748;font-weight:700">
     <td style="color:#a0aec0">Totale</td>
-    <td style="text-align:right;color:#68d391">+€${fmt(totalPlusv)}</td>
+    <td style="text-align:right;color:#68d391" title="Plusvalenze compensabili (escluse ETF)">+€${fmt(totalPlusv)}</td>
     <td style="text-align:right;color:#b794f4">+€${fmt(totalCedole)}</td>
     <td style="text-align:right;color:#fc8181">-€${fmt(totalMinusv)}</td>
     <td style="text-align:right"><span class="${totNet>=0?'green':'red'}">${totNet>=0?'+':'-'}€${fmt(Math.abs(totNet))}</span></td>
@@ -1885,6 +2006,76 @@ function renderRealizedPL(byYear) {
     s += `</div>`;
     summary.innerHTML = s;
   }
+}
+
+
+// ════════════════════════════════════════════════
+// LISTA MOVIMENTI
+// ════════════════════════════════════════════════
+const CAT_LABEL = {
+  BUY:'Acquisto', SELL:'Vendita', DIVIDEND:'Dividendo', ETF_INCOME:'Provento ETF',
+  COUPON:'Cedola cert.', COMMISSION:'Commissione', TAX:'Ritenuta', TOBIN:'Tobin Tax',
+  DEPOSIT:'Versamento', WITHDRAWAL:'Prelievo'
+};
+
+function renderMovimenti() {
+  const card = document.getElementById('movimentiCard');
+  const rows = G.rows || [];
+  if (!rows.length) { card.style.display = 'none'; return; }
+  card.style.display = 'block';
+
+  const year = selectedYear;
+  const q = (document.getElementById('movSearch')?.value || '').toLowerCase().trim();
+
+  let filtered = year === 'tutto'
+    ? [...rows]
+    : rows.filter(r => r.date && r.date.getFullYear() === Number(year));
+
+  if (q) {
+    filtered = filtered.filter(r =>
+      (TICKER_ALIASES[r.ticker] || r.ticker || '').toLowerCase().includes(q) ||
+      (r.isin  || '').toLowerCase().includes(q) ||
+      (r.desc  || '').toLowerCase().includes(q) ||
+      (r.cat   || '').toLowerCase().includes(q) ||
+      (CAT_LABEL[r.cat] || '').toLowerCase().includes(q)
+    );
+  }
+
+  // Data DESC
+  filtered.sort((a, b) => b.date - a.date);
+
+  const tbody = document.getElementById('movimentiBody');
+  if (!filtered.length) {
+    tbody.innerHTML = '<tr><td colspan="7" style="color:#4a5568;padding:20px;text-align:center">Nessun movimento trovato</td></tr>';
+    document.getElementById('movCount').textContent = '';
+    return;
+  }
+
+  const fmtDate = d => d ? d.toLocaleDateString('it-IT',{day:'2-digit',month:'2-digit',year:'numeric'}) : '—';
+  const fmtQty  = v => v ? v.toLocaleString('it-IT', {maximumFractionDigits:4}) : '—';
+
+  tbody.innerHTML = filtered.map(r => {
+    const ticker  = TICKER_ALIASES[r.ticker] || r.ticker || '—';
+    const amt     = r.amount ?? 0;
+    const amtCol  = amt >= 0 ? '#68d391' : '#fc8181';
+    const amtStr  = (amt >= 0 ? '+' : '−') + '€' + fmt(Math.abs(amt));
+    const cat     = r.cat || '';
+    const label   = CAT_LABEL[cat] || cat;
+    const desc    = (r.desc || '').replace(/"/g,'&quot;');
+    const descShort = r.desc ? (r.desc.length > 40 ? r.desc.slice(0,40)+'…' : r.desc) : '—';
+    return `<tr>
+      <td style="white-space:nowrap;color:#718096">${fmtDate(r.date)}</td>
+      <td><strong style="color:#63b3ed">${ticker}</strong></td>
+      <td style="font-family:monospace;font-size:.7rem;color:#4a5568">${r.isin || '—'}</td>
+      <td style="color:#a0aec0" title="${desc}">${descShort}</td>
+      <td><span class="cat-badge cat-${cat}">${label}</span></td>
+      <td style="text-align:right;color:#718096">${fmtQty(r.qty)}</td>
+      <td style="text-align:right;font-weight:600;color:${amtCol}">${amtStr}</td>
+    </tr>`;
+  }).join('');
+
+  const tot = filtered.length;
+  document.getElementById('movCount').textContent = `${tot.toLocaleString('it-IT')} movimento${tot===1?'':'i'}`;
 }
 
 // ════════════════════════════════════════════════
@@ -2177,7 +2368,7 @@ function renderDashboard(rows) {
   const {open, closed, realized} = buildPositions(rows);
   const monthly   = buildMonthly(rows);
   const yearly    = buildYearly(monthly);
-  const payers    = buildTopPayers(rows);
+  const payers    = buildTopPayers(rows, open);
   const realizedByYear = buildRealizedByYear(realized);
 
   G = {rows, positions: open, closedPositions: closed, realized, realizedByYear, monthly, yearly, payers};
@@ -2204,6 +2395,7 @@ function renderDashboard(rows) {
   fillRank('etfTable', payers.etf, C.green);
   fillCoupons(payers.coup);
   renderRealizedPL(realizedByYear);
+  renderMovimenti();
   renderDivCalendar();
 
   // Show dashboard
