@@ -270,10 +270,7 @@ a.ticker-badge:hover{background:#2b6cb0;color:#fff}
   .ft-full{display:none}
   .ft-short{display:inline}
 }
-<<<<<<< HEAD
 
-=======
->>>>>>> 400431adfb327a11408c7bb88a5612a02fe64d3e
 
 /* ── LISTA MOVIMENTI ── */
 .mov-search{width:100%;padding:8px 12px;background:#0f1117;border:1px solid #2d3748;border-radius:6px;color:#e2e8f0;font-size:0.82rem;margin-bottom:10px;outline:none;transition:border-color .15s}
@@ -591,11 +588,7 @@ a.ticker-badge:hover{background:#2b6cb0;color:#fff}
 
 <!-- ══ FOOTER ══ -->
 <footer class="site-footer">
-<<<<<<< HEAD
   <span class="footer-copyright">Directa Dashboard © 2026 &nbsp;·&nbsp; <a href="https://www.emax83dev.it" target="_blank" rel="noopener">emax83dev</a> &nbsp;·&nbsp; v1.1</span>
-=======
-  <span class="footer-copyright">© 2026 <a href="https://www.emax83dev.it" target="_blank" rel="noopener">emax83dev</a></span>
->>>>>>> 400431adfb327a11408c7bb88a5612a02fe64d3e
   <div class="footer-right">
     <button onclick="openDonateModal()" style="background:none;border:1px solid #2d3748;border-radius:20px;color:#718096;padding:5px 14px;font-size:0.75rem;cursor:pointer;transition:all .2s;line-height:1.4" onmouseover="this.style.borderColor='#f6ad55';this.style.color='#f6ad55'" onmouseout="this.style.borderColor='#2d3748';this.style.color='#718096'">☕ <span class="ft-full">Ti piace la web app?</span><span class="ft-short">Ti piace</span></button>
     <a href="#" onclick="openPrivacyModal();return false;"><span class="ft-full">Termini e condizioni & Privacy Policy</span><span class="ft-short">T&C-Privacy</span></a>
@@ -1040,21 +1033,14 @@ function buildTopPayers(rows, openPositions = []) {
     if (r.cat==='ETF_INCOME') etf[t]  = (etf[t]||0)  + r.amount;
     if (r.cat==='COUPON')     coup[t] = (coup[t]||0) + r.amount;
     if (r.cat==='BUY')        rawCost[t] = (rawCost[t]||0) + Math.abs(r.amount);
-<<<<<<< HEAD
   }
+
   // Prefer FIFO cost from open positions over historical BUY sum
   const costMap = {...rawCost};
   for (const p of openPositions) {
     if (p.totalCost > 0) costMap[p.ticker] = p.totalCost;
   }
-=======
-  }
-  // Prefer FIFO cost from open positions over historical BUY sum
-  const costMap = {...rawCost};
-  for (const p of openPositions) {
-    if (p.totalCost > 0) costMap[p.ticker] = p.totalCost;
-  }
->>>>>>> 400431adfb327a11408c7bb88a5612a02fe64d3e
+
   const totalGross = [div, etf, coup].reduce((s, obj) =>
     s + Object.values(obj).reduce((a, v) => a + v, 0), 0);
 
