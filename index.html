@@ -1408,7 +1408,7 @@ function fillRank(id, data, color) {
     const yocStr  = x.yoc  != null ? x.yoc.toFixed(2)  + '%' : '—';
     const isin = isinMap[x.t] || '';
     b.innerHTML += `<tr>
-      <td><strong>${x.t}</strong>${isin?`<br><span style="font-size:.62rem;color:#4a5568;font-family:monospace">${isin}</span>`:''}</td>
+      <td style="cursor:pointer" onclick="openTickerModal('${x.t}')"><strong>${x.t}</strong>${isin?`<br><span style="font-size:.62rem;color:#4a5568;font-family:monospace">${isin}</span>`:''}</td>
       <td style="color:${color}">€${x.v.toFixed(2)}</td>
       <td style="width:120px">
         <div class="bar-cell">
@@ -1431,8 +1431,8 @@ function fillCoupons(data) {
     const desc = descMap[x.t] || '';
     const premioStr = x.yoc != null ? x.yoc.toFixed(2) + '%' : '—';
     b.innerHTML += `<tr>
-      <td><strong style="color:${C.purple}">${x.t}</strong>${isin?`<br><span style="font-size:.62rem;color:#4a5568;font-family:monospace">${isin}</span>`:''}</td>
-      <td style="font-size:.76rem;color:#a0aec0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${desc}">${desc || '—'}</td>
+      <td style="cursor:pointer" onclick="openTickerModal('${x.t}')"><strong style="color:${C.purple}">${x.t}</strong>${isin?`<br><span style="font-size:.62rem;color:#4a5568;font-family:monospace">${isin}</span>`:''}</td>
+      <td style="font-size:.76rem;color:#a0aec0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer" onclick="openTickerModal('${x.t}')" title="${desc}">${desc || '—'}</td>
       <td style="color:${C.purple}">€${x.v.toFixed(2)}</td>
       <td style="font-size:.75rem;color:#f6ad55;text-align:right;white-space:nowrap">${premioStr}</td></tr>`;
   });
@@ -1732,9 +1732,8 @@ function renderTable(pm) {
           ? `https://investimenti.bnpparibas.it/product-details/${pos.isin}/`
           : null);
     rows += `<tr data-ticker="${pos.ticker}">
-      <td style="white-space:nowrap">
-        ${yhUrl ? `<a class="ticker-badge" href="${yhUrl}" target="_blank" rel="noopener" title="${pos.yahoo?'Apri su Yahoo Finance':'Apri su BNP Paribas'}">${pos.ticker}</a>` : `<span class="ticker-badge">${pos.ticker}</span>`}
-        <button onclick="openTickerModal('${pos.ticker}')" title="Dettaglio" style="background:none;border:none;cursor:pointer;color:#4a5568;padding:0 2px;font-size:.75rem;vertical-align:middle" onmouseover="this.style.color='#a0aec0'" onmouseout="this.style.color='#4a5568'">ℹ</button>
+      <td style="white-space:nowrap;cursor:pointer" onclick="openTickerModal('${pos.ticker}')">
+        <span class="ticker-badge">${pos.ticker}</span>
         ${pos.isin?`<br><span style="font-size:.58rem;color:#4a5568;font-family:monospace;letter-spacing:.02em">${pos.isin}</span>`:''}
       </td>
       <td style="max-width:170px;overflow:hidden;text-overflow:ellipsis;cursor:pointer" onclick="openTickerModal('${pos.ticker}')" title="Apri dettaglio">${pos.desc||pos.ticker}</td>
@@ -1784,9 +1783,8 @@ function renderTable(pm) {
     const barW = Math.min(Math.abs(c.realizedPLpct), 100);
     const cYhUrl = c.yahoo ? `https://finance.yahoo.com/quote/${c.yahoo}/` : null;
     rows += `<tr class="row-closed">
-      <td style="white-space:nowrap">
-        ${cYhUrl ? `<a class="ticker-badge" href="${cYhUrl}" target="_blank" rel="noopener" title="Apri su Yahoo Finance">${c.ticker}</a>` : `<span class="ticker-badge">${c.ticker}</span>`}
-        <button onclick="openTickerModal('${c.ticker}')" title="Dettaglio" style="background:none;border:none;cursor:pointer;color:#4a5568;padding:0 2px;font-size:.75rem;vertical-align:middle" onmouseover="this.style.color='#a0aec0'" onmouseout="this.style.color='#4a5568'">ℹ</button>
+      <td style="white-space:nowrap;cursor:pointer" onclick="openTickerModal('${c.ticker}')">
+        <span class="ticker-badge">${c.ticker}</span>
       </td>
       <td style="max-width:170px;overflow:hidden;text-overflow:ellipsis;cursor:pointer" onclick="openTickerModal('${c.ticker}')" title="Apri dettaglio">
         ${c.desc||c.ticker} <span style="font-size:.65rem;background:#1e2332;border-radius:3px;padding:1px 4px;margin-left:3px">CHIUSA</span>
@@ -2068,11 +2066,13 @@ function renderMovimenti() {
     const label   = CAT_LABEL[cat] || cat;
     const desc    = (r.desc || '').replace(/"/g,'&quot;');
     const descShort = r.desc ? (r.desc.length > 40 ? r.desc.slice(0,40)+'…' : r.desc) : '—';
+    const canOpen = ticker !== '—' && ticker !== '?';
+    const clickAttr = canOpen ? `onclick="openTickerModal('${ticker}')" style="cursor:pointer"` : '';
     return `<tr>
       <td style="white-space:nowrap;color:#718096">${fmtDate(r.date)}</td>
-      <td><strong style="color:#63b3ed">${ticker}</strong></td>
-      <td style="font-family:monospace;font-size:.7rem;color:#4a5568">${r.isin || '—'}</td>
-      <td style="color:#a0aec0" title="${desc}">${descShort}</td>
+      <td ${clickAttr}><strong style="color:#63b3ed">${ticker}</strong></td>
+      <td ${clickAttr} style="font-family:monospace;font-size:.7rem;color:#4a5568">${r.isin || '—'}</td>
+      <td ${clickAttr} style="color:#a0aec0" title="${desc}">${descShort}</td>
       <td><span class="cat-badge cat-${cat}">${label}</span></td>
       <td style="text-align:right;color:#718096">${fmtQty(r.qty)}</td>
       <td style="text-align:right;font-weight:600;color:${amtCol}">${amtStr}</td>
@@ -2146,11 +2146,9 @@ function openTickerModal(ticker) {
   const isClosed = !!closed && !pos;
 
   document.getElementById('tickerModalContent').innerHTML = `
-    <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
-      ${yhUrl
-        ? `<a class="ticker-badge" href="${yhUrl}" target="_blank" rel="noopener" style="font-size:1rem;padding:4px 10px">${ticker}</a>`
-        : `<span class="ticker-badge" style="font-size:1rem;padding:4px 10px">${ticker}</span>`}
-      <div>
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap">
+      <span class="ticker-badge" style="font-size:1rem;padding:4px 10px">${ticker}</span>
+      <div style="flex:1;min-width:0">
         <div style="font-weight:700;color:#e2e8f0">${p.desc||ticker}</div>
         <div style="font-size:0.72rem;color:#718096;margin-top:2px">
           <span style="color:${tc}">${p.type}</span>
@@ -2158,7 +2156,9 @@ function openTickerModal(ticker) {
           ${p.geo&&p.geo!=='Altro'?` · ${p.geo}`:''}
           ${isClosed?'<span style="margin-left:6px;background:#1e2332;border-radius:3px;padding:1px 5px;font-size:.65rem">CHIUSA</span>':''}
         </div>
+        ${p.isin?`<div style="font-size:.68rem;font-family:monospace;color:#4a5568;margin-top:2px">${p.isin}</div>`:''}
       </div>
+      ${yhUrl?`<a href="${yhUrl}" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:4px;padding:5px 11px;background:#1e3a5f;border:1px solid #2b6cb0;border-radius:6px;color:#63b3ed;font-size:.75rem;text-decoration:none;white-space:nowrap">🔗 Yahoo Finance</a>`:''}
     </div>
 
     <div class="ticker-detail-grid">
@@ -2181,14 +2181,20 @@ function openTickerModal(ticker) {
         ${lp!=null?`<div class="sub">Valore mkt: €${fmt(mv)}</div>`:''}
       </div>
       <div class="ticker-kpi">
-        <div class="lbl">P&L latente</div>
+        <div class="lbl">P&amp;L latente (€)</div>
         <div class="val ${latentPL==null?'':latentPL>=0?'green':'red'}">${latentPL!=null?(latentPL>=0?'+':'-')+'€'+fmt(Math.abs(latentPL)):'—'}</div>
-        ${latentPL!=null&&pos.totalCost>0?`<div class="sub">${((latentPL/pos.totalCost)*100)>=0?'+':''}${fmt((latentPL/pos.totalCost)*100)}% vs carico</div>`:''}
+      </div>
+      <div class="ticker-kpi">
+        <div class="lbl">P&amp;L latente (%)</div>
+        <div class="val ${latentPL==null?'':latentPL>=0?'green':'red'}">${latentPL!=null&&pos.totalCost>0?(((latentPL/pos.totalCost)*100)>=0?'+':'')+fmt((latentPL/pos.totalCost)*100)+'%':'—'}</div>
       </div>` : `
       <div class="ticker-kpi">
-        <div class="lbl">P&L realizzato</div>
+        <div class="lbl">P&amp;L realizzato (€)</div>
         <div class="val ${closed.realizedPL>=0?'green':'red'}">${closed.realizedPL>=0?'+':'-'}€${fmt(Math.abs(closed.realizedPL))}</div>
-        <div class="sub">${closed.realizedPLpct>=0?'+':''}${fmt(closed.realizedPLpct)}% sul costo</div>
+      </div>
+      <div class="ticker-kpi">
+        <div class="lbl">P&amp;L realizzato (%)</div>
+        <div class="val ${closed.realizedPLpct>=0?'green':'red'}">${closed.realizedPLpct>=0?'+':''}${fmt(closed.realizedPLpct)}%</div>
       </div>
       <div class="ticker-kpi">
         <div class="lbl">Prezzo medio acquisto</div>
