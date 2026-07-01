@@ -1284,7 +1284,8 @@ function renderPieCharts(positions) {
   positions.forEach(p => { byType[p.type] = (byType[p.type]||0) + p.totalCost; });
   const typeColors = {Azione:C.green, ETF:C.blue, 'Certif.':C.purple, 'Liquidità':C.orange};
   const tKeys = Object.keys(byType); const tVals = tKeys.map(k=>byType[k]);
-  new Chart(document.getElementById('pieAsset'),{type:'doughnut',
+  if (staticCharts.pieAsset) staticCharts.pieAsset.destroy();
+  staticCharts.pieAsset = new Chart(document.getElementById('pieAsset'),{type:'doughnut',
     data:{labels:tKeys,datasets:[{data:tVals,backgroundColor:tKeys.map(k=>typeColors[k]||C.gray),hoverOffset:6,borderWidth:2,borderColor:'#1a1d2e'}]},
     options:PIE(`Tot. costo €${Math.round(tVals.reduce((a,b)=>a+b,0)).toLocaleString('it-IT')}`)});
 
@@ -1293,7 +1294,8 @@ function renderPieCharts(positions) {
   positions.forEach(p => { bySec[p.sector] = (bySec[p.sector]||0) + p.totalCost; });
   const secPairs = Object.entries(bySec).sort((a,b)=>b[1]-a[1]);
   const SEC_COLORS = [C.blue,C.orange,C.green,C.purple,C.teal,C.red,C.yellow,C.gray];
-  new Chart(document.getElementById('pieSector'),{type:'doughnut',
+  if (staticCharts.pieSector) staticCharts.pieSector.destroy();
+  staticCharts.pieSector = new Chart(document.getElementById('pieSector'),{type:'doughnut',
     data:{labels:secPairs.map(x=>x[0]),datasets:[{data:secPairs.map(x=>x[1]),backgroundColor:SEC_COLORS,hoverOffset:6,borderWidth:2,borderColor:'#1a1d2e'}]},
     options:PIE('Esposizione settoriale')});
 
@@ -1302,7 +1304,8 @@ function renderPieCharts(positions) {
   positions.forEach(p => { byGeo[p.geo] = (byGeo[p.geo]||0) + p.totalCost; });
   const geoPairs = Object.entries(byGeo).sort((a,b)=>b[1]-a[1]);
   const GEO_COLORS = [C.green,C.blue,C.purple,C.orange,C.red,C.teal,C.yellow];
-  new Chart(document.getElementById('pieGeo'),{type:'doughnut',
+  if (staticCharts.pieGeo) staticCharts.pieGeo.destroy();
+  staticCharts.pieGeo = new Chart(document.getElementById('pieGeo'),{type:'doughnut',
     data:{labels:geoPairs.map(x=>x[0]),datasets:[{data:geoPairs.map(x=>x[1]),backgroundColor:GEO_COLORS,hoverOffset:6,borderWidth:2,borderColor:'#1a1d2e'}]},
     options:PIE('Esposizione geografica')});
 }
