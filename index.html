@@ -479,11 +479,11 @@ a.ticker-badge:hover{background:#2b6cb0;color:#fff}
   <div class="charts-2">
     <div class="card">
       <h3 class="section-title">Top Azioni — Dividendi Lordi (€)</h3>
-      <table><thead><tr><th>Ticker</th><th>Importo</th><th title="% sul totale reddito lordo di tutti gli strumenti">Peso tot.</th><th title="Reddito totale / costo medio di carico">YoC%</th></tr></thead><tbody id="divTable"></tbody></table>
+      <table><thead><tr><th>Ticker</th><th>Importo</th><th title="% sul totale reddito lordo di tutti gli strumenti">Peso tot.</th><th title="Reddito totale / costo medio di carico">YoC%</th></tr></thead><tbody id="divTable"></tbody><tfoot id="divTableFoot"></tfoot></table>
     </div>
     <div class="card">
       <h3 class="section-title">Top ETF — Proventi Lordi (€)</h3>
-      <table><thead><tr><th>Ticker</th><th>Importo</th><th title="% sul totale reddito lordo di tutti gli strumenti">Peso tot.</th><th title="Reddito totale / costo medio di carico">YoC%</th></tr></thead><tbody id="etfTable"></tbody></table>
+      <table><thead><tr><th>Ticker</th><th>Importo</th><th title="% sul totale reddito lordo di tutti gli strumenti">Peso tot.</th><th title="Reddito totale / costo medio di carico">YoC%</th></tr></thead><tbody id="etfTable"></tbody><tfoot id="etfTableFoot"></tfoot></table>
     </div>
   </div>
 
@@ -493,7 +493,7 @@ a.ticker-badge:hover{background:#2b6cb0;color:#fff}
       <table style="table-layout:fixed">
         <colgroup><col style="width:22%"><col style="width:42%"><col style="width:20%"><col style="width:16%"></colgroup>
         <thead><tr><th>Ticker</th><th>Descrizione</th><th>Totale</th><th title="Cedole totali / costo medio di carico">Premio%</th></tr></thead>
-        <tbody id="coupTable"></tbody>
+        <tbody id="coupTable"></tbody><tfoot id="coupTableFoot"></tfoot>
       </table>
     </div>
     <div class="card">
@@ -1525,46 +1525,77 @@ function buildDescMap() {
   return map;
 }
 
-function fillRank(id, data, color) {
+function fillRank(id, data, color, openSet = new Set()) {
   const max = Math.max(...data.map(x=>x.v), 1);
   const isinMap = buildIsinMap();
-  const b = document.getElementById(id);
+  const b  = document.getElementById(id);
+  const ft = document.getElementById(id + 'Foot');
   b.innerHTML = '';
+  let total = 0;
   data.forEach(x => {
-    const barW   = (x.v / max * 100).toFixed(0);
+    total += x.v;
+    const inPort  = openSet.has(x.t);
+    const dimmed  = !inPort;
+    const rowOpacity = dimmed ? 'opacity:.45' : '';
+    const valColor   = dimmed ? '#718096' : color;
+    const barW    = (x.v / max * 100).toFixed(0);
     const pesoStr = x.peso != null ? x.peso.toFixed(1) + '%' : '—';
     const yocStr  = x.yoc  != null ? x.yoc.toFixed(2)  + '%' : '—';
-    const isin = isinMap[x.t] || '';
-    b.innerHTML += `<tr>
-      <td style="cursor:pointer" onclick="openTickerModal('${x.t}')"><strong>${x.t}</strong>${isin?`<br><span style="font-size:.62rem;color:#4a5568;font-family:monospace">${isin}</span>`:''}</td>
-      <td style="color:${color}">€${x.v.toFixed(2)}</td>
+    const isin    = isinMap[x.t] || '';
+    b.innerHTML += `<tr style="${rowOpacity}">
+      <td style="cursor:pointer" onclick="openTickerModal('${x.t}')"><strong style="color:${dimmed?'#718096':'inherit'}">${x.t}</strong>${isin?`<br><span style="font-size:.62rem;color:#4a5568;font-family:monospace">${isin}</span>`:''}</td>
+      <td style="color:${valColor}">€${x.v.toFixed(2)}</td>
       <td style="width:120px">
         <div class="bar-cell">
-          <div class="bar-bg2"><div class="bar-fill2" style="width:${barW}%;background:${color}"></div></div>
+          <div class="bar-bg2"><div class="bar-fill2" style="width:${barW}%;background:${valColor}"></div></div>
           <span style="font-size:.7rem;color:#718096;min-width:32px">${pesoStr}</span>
         </div>
       </td>
-      <td style="font-size:.75rem;color:#f6ad55;text-align:right;white-space:nowrap">${yocStr}</td></tr>`;
+      <td style="font-size:.75rem;color:${dimmed?'#4a5568':'#f6ad55'};text-align:right;white-space:nowrap">${yocStr}</td></tr>`;
   });
-  if (!data.length) b.innerHTML = '<tr><td colspan="4" style="color:#4a5568;padding:10px">Nessun dato</td></tr>';
+  if (!data.length) {
+    b.innerHTML = '<tr><td colspan="4" style="color:#4a5568;padding:10px">Nessun dato</td></tr>';
+    if (ft) ft.innerHTML = '';
+    return;
+  }
+  if (ft) ft.innerHTML = `<tr style="border-top:1px solid #2d3748">
+    <td style="font-size:.75rem;color:#718096;padding-top:6px">Totale</td>
+    <td style="color:${color};font-weight:700;padding-top:6px">€${total.toFixed(2)}</td>
+    <td></td><td></td></tr>`;
 }
 
-function fillCoupons(data) {
+function fillCoupons(data, openSet = new Set()) {
   const isinMap = buildIsinMap();
   const descMap = buildDescMap();
-  const b = document.getElementById('coupTable');
+  const b  = document.getElementById('coupTable');
+  const ft = document.getElementById('coupTableFoot');
   b.innerHTML = '';
+  let total = 0;
   data.forEach(x => {
+    total += x.v;
+    const inPort  = openSet.has(x.t);
+    const dimmed  = !inPort;
+    const rowOpacity = dimmed ? 'opacity:.45' : '';
+    const valColor   = dimmed ? '#718096' : C.purple;
     const isin = isinMap[x.t] || '';
     const desc = descMap[x.t] || '';
     const premioStr = x.yoc != null ? x.yoc.toFixed(2) + '%' : '—';
-    b.innerHTML += `<tr>
-      <td style="cursor:pointer" onclick="openTickerModal('${x.t}')"><strong style="color:${C.purple}">${x.t}</strong>${isin?`<br><span style="font-size:.62rem;color:#4a5568;font-family:monospace">${isin}</span>`:''}</td>
-      <td style="font-size:.76rem;color:#a0aec0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer" onclick="openTickerModal('${x.t}')" title="${desc}">${desc || '—'}</td>
-      <td style="color:${C.purple}">€${x.v.toFixed(2)}</td>
-      <td style="font-size:.75rem;color:#f6ad55;text-align:right;white-space:nowrap">${premioStr}</td></tr>`;
+    b.innerHTML += `<tr style="${rowOpacity}">
+      <td style="cursor:pointer" onclick="openTickerModal('${x.t}')"><strong style="color:${valColor}">${x.t}</strong>${isin?`<br><span style="font-size:.62rem;color:#4a5568;font-family:monospace">${isin}</span>`:''}</td>
+      <td style="font-size:.76rem;color:${dimmed?'#4a5568':'#a0aec0'};overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer" onclick="openTickerModal('${x.t}')" title="${desc}">${desc || '—'}</td>
+      <td style="color:${valColor}">€${x.v.toFixed(2)}</td>
+      <td style="font-size:.75rem;color:${dimmed?'#4a5568':'#f6ad55'};text-align:right;white-space:nowrap">${premioStr}</td></tr>`;
   });
-  if (!data.length) b.innerHTML = '<tr><td colspan="4" style="color:#4a5568;padding:10px">Nessun dato</td></tr>';
+  if (!data.length) {
+    b.innerHTML = '<tr><td colspan="4" style="color:#4a5568;padding:10px">Nessun dato</td></tr>';
+    if (ft) ft.innerHTML = '';
+    return;
+  }
+  if (ft) ft.innerHTML = `<tr style="border-top:1px solid #2d3748">
+    <td style="font-size:.75rem;color:#718096;padding-top:6px">Totale</td>
+    <td></td>
+    <td style="color:${C.purple};font-weight:700;padding-top:6px">€${total.toFixed(2)}</td>
+    <td></td></tr>`;
 }
 
 // ════════════════════════════════════════════════
@@ -2827,9 +2858,10 @@ function renderDashboard(rows) {
   updateKPIs();
   renderPieCharts(open);
   renderIncomeCharts(monthly, yearly);
-  fillRank('divTable', payers.div, C.blue);
-  fillRank('etfTable', payers.etf, C.green);
-  fillCoupons(payers.coup);
+  const openSet = new Set((open||[]).map(p => p.ticker));
+  fillRank('divTable', payers.div, C.blue, openSet);
+  fillRank('etfTable', payers.etf, C.green, openSet);
+  fillCoupons(payers.coup, openSet);
   renderRealizedPL(realizedByYear);
   renderMovimenti();
   renderProventiPrevisti();
