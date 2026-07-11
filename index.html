@@ -152,6 +152,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 @media(min-width:1024px){.kpi .value{font-size:1.4rem}}
 .kpi .sub{font-size:0.62rem;color:#718096;margin-top:2px}
 @media(min-width:640px){.kpi .sub{font-size:0.68rem}}
+.kpi-calc{cursor:pointer;text-align:center;transition:background .15s,border-color .15s}
+.kpi-calc:hover{background:#162032;border-color:#4299e1}
 
 /* charts: 1col mobile → 2col sm → 3col lg */
 .charts-3{display:grid;grid-template-columns:1fr;gap:10px;margin-bottom:12px}
@@ -413,6 +415,11 @@ a.ticker-badge:hover{background:#2b6cb0;color:#fff}
     <div class="kpi"><div class="label">Liquidità</div><div class="value" id="kpiLiq">—</div><div class="sub" id="kpiLiqSub">Saldo cassa</div></div>
     <div class="kpi"><div class="label">Minus residue</div><div class="value red" id="kpiMinus">—</div><div class="sub" id="kpiMinusSub">Da recuperare</div></div>
     <div class="kpi"><div class="label" id="kpiProvLabel">Proventi Mese</div><div class="value orange" id="kpiProv">—</div><div class="sub" id="kpiProvSub">—</div></div>
+    <div class="kpi kpi-calc" onclick="openCalcModal()" title="Pianifica i prossimi acquisti">
+      <div class="label" style="color:#90cdf4">Calcolatore</div>
+      <div class="value" style="font-size:1.5rem;line-height:1.1">🧮</div>
+      <div class="sub" style="color:#4299e1">Pianifica acquisti</div>
+    </div>
   </div>
 
   <!-- DYNAMIC PROGRESSIVE CHARTS -->
@@ -672,6 +679,60 @@ a.ticker-badge:hover{background:#2b6cb0;color:#fff}
   <div class="modal-box" style="max-width:560px;width:94%">
     <button class="modal-close" onclick="closeTickerModal()">✕</button>
     <div id="tickerModalContent"></div>
+  </div>
+</div>
+
+<!-- ══ CALCOLATORE MODAL ══ -->
+<div class="modal-overlay" id="calcModal" style="display:none" onclick="if(event.target===this)closeCalcModal()">
+  <div class="modal-box" style="max-width:820px;width:96%">
+    <button class="modal-close" onclick="closeCalcModal()">✕</button>
+    <h2>🧮 Calcolatore Acquisti</h2>
+
+    <!-- Budget row -->
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:16px;padding:12px 14px;background:#0f1117;border:1px solid #2d3748;border-radius:8px">
+      <span style="font-size:.78rem;color:#a0aec0;white-space:nowrap">Cifra disponibile:</span>
+      <div style="display:flex;align-items:center;gap:6px">
+        <span style="color:#718096;font-size:.85rem">€</span>
+        <input type="number" id="calcBudget" min="0" step="0.01" placeholder="0.00"
+          style="width:120px;background:#1a1d2e;border:1px solid #2d3748;border-radius:6px;color:#e2e8f0;padding:6px 10px;font-size:.88rem;text-align:right;outline:none"
+          oninput="updateCalcSummary()"
+          onfocus="this.style.borderColor='#4299e1'"
+          onblur="this.style.borderColor='#2d3748'">
+      </div>
+      <button onclick="prefillCalcBudget()" style="background:#1a2744;border:1px solid #2b6cb0;color:#63b3ed;border-radius:6px;padding:6px 12px;font-size:.75rem;cursor:pointer;white-space:nowrap" onmouseover="this.style.background='#2b6cb0'" onmouseout="this.style.background='#1a2744'">Da liquidità</button>
+    </div>
+
+    <!-- Picker -->
+    <div style="margin-bottom:12px">
+      <div style="font-size:.68rem;color:#718096;text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">Aggiungi strumento dal portafoglio</div>
+      <div id="calcPicker" style="display:flex;flex-wrap:wrap;gap:6px"></div>
+    </div>
+
+    <!-- Table -->
+    <div class="live-table-scroll">
+      <table style="font-size:.82rem">
+        <thead>
+          <tr>
+            <th>Ticker</th>
+            <th>Strumento</th>
+            <th>Tipo</th>
+            <th style="text-align:right">Q.tà att.</th>
+            <th style="text-align:right">Prezzo Live</th>
+            <th style="text-align:right">Da investire</th>
+            <th style="text-align:right">Quote</th>
+            <th style="text-align:right">Importo eff.</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="calcTableBody">
+          <tr><td colspan="9" style="text-align:center;color:#4a5568;padding:24px">Aggiungi strumenti dal portafoglio per pianificare gli acquisti.</td></tr>
+        </tbody>
+        <tfoot id="calcTableFoot"></tfoot>
+      </table>
+    </div>
+
+    <!-- Summary -->
+    <div id="calcSummary"></div>
   </div>
 </div>
 
@@ -2854,6 +2915,179 @@ function updateDataInfo(rows) {
   el.textContent = maxDate
     ? 'Dati aggiornati al ' + maxDate.toLocaleDateString('it-IT',{day:'2-digit',month:'2-digit',year:'numeric'})
     : '';
+}
+
+// ══ CALCOLATORE ══
+let calcItems = []; // [{ticker, amount}]
+
+function openCalcModal() {
+  if (!G.positions || !G.positions.length) return;
+  document.getElementById('calcModal').style.display = 'flex';
+  document.body.style.overflow = 'hidden';
+  renderCalcPicker();
+  renderCalcTable();
+  updateCalcSummary();
+}
+function closeCalcModal() {
+  document.getElementById('calcModal').style.display = 'none';
+  document.body.style.overflow = '';
+}
+
+function getCalcPrice(pos) {
+  const pm = G._lastPm || {};
+  const key = pos.yahoo || pos.isin;
+  return key ? (pm[key]?.regularMarketPrice ?? null) : null;
+}
+
+function renderCalcPicker() {
+  const el = document.getElementById('calcPicker');
+  if (!el) return;
+  const positions = G.positions || [];
+  const added = new Set(calcItems.map(x => x.ticker));
+  const available = positions.filter(p => !added.has(p.ticker));
+  if (!available.length) {
+    el.innerHTML = '<span style="font-size:.75rem;color:#4a5568">Tutti gli strumenti sono stati aggiunti.</span>';
+    return;
+  }
+  el.innerHTML = available.map(p => {
+    const tc = p.type==='Azione'?'#63b3ed':p.type==='ETF'?'#68d391':'#b794f4';
+    const safe = p.ticker.replace(/'/g,"\\'");
+    return `<button onclick="addCalcItem('${safe}')"
+      style="background:#0f1117;border:1px solid ${tc};color:${tc};border-radius:5px;padding:4px 10px;font-size:.72rem;cursor:pointer;transition:background .1s"
+      onmouseover="this.style.background='#1a1d2e'" onmouseout="this.style.background='#0f1117'"
+      title="${(p.desc||p.ticker).replace(/"/g,'&quot;')}">${p.ticker} <span style="opacity:.6">${p.type}</span></button>`;
+  }).join('');
+}
+
+function addCalcItem(ticker) {
+  if (calcItems.find(x => x.ticker === ticker)) return;
+  calcItems.push({ ticker, amount: '' });
+  renderCalcPicker();
+  renderCalcTable();
+  updateCalcSummary();
+}
+
+function removeCalcItem(ticker) {
+  calcItems = calcItems.filter(x => x.ticker !== ticker);
+  renderCalcPicker();
+  renderCalcTable();
+  updateCalcSummary();
+}
+
+function onCalcAmountChange(ticker, val) {
+  const item = calcItems.find(x => x.ticker === ticker);
+  if (!item) return;
+  item.amount = val;
+  // Update only the derived cells — do NOT re-render entire table (would lose focus)
+  const pos = (G.positions||[]).find(p => p.ticker === ticker);
+  if (!pos) return;
+  const price = getCalcPrice(pos);
+  const amount = parseFloat(String(val).replace(',','.')) || 0;
+  const quotes = price != null && amount > 0 ? Math.floor(amount / price) : null;
+  const effective = quotes != null && price ? quotes * price : null;
+  const qEl = document.getElementById('cq-' + ticker);
+  const eEl = document.getElementById('ce-' + ticker);
+  if (qEl) {
+    if (quotes == null)   qEl.innerHTML = '—';
+    else if (quotes === 0) qEl.innerHTML = '<span style="color:#fc8181">0</span>';
+    else                   qEl.innerHTML = `<strong>${quotes}</strong>`;
+  }
+  if (eEl) {
+    if (!effective || effective === 0) eEl.innerHTML = '<span style="color:#4a5568">—</span>';
+    else                               eEl.innerHTML = `€${fmt(effective)}`;
+  }
+  updateCalcSummary();
+}
+
+function prefillCalcBudget() {
+  const txt = (document.getElementById('kpiLiq')?.textContent || '').replace(/[^\d,.]/g,'');
+  const num = parseFloat(txt.replace(/\./g,'').replace(',','.'));
+  if (!isNaN(num) && num > 0) {
+    document.getElementById('calcBudget').value = num.toFixed(2);
+    updateCalcSummary();
+  }
+}
+
+function renderCalcTable() {
+  const tbody = document.getElementById('calcTableBody');
+  if (!tbody) return;
+  if (!calcItems.length) {
+    tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;color:#4a5568;padding:24px">Aggiungi strumenti dal portafoglio per pianificare gli acquisti.</td></tr>`;
+    return;
+  }
+  const positions = G.positions || [];
+  const C = {blue:'#63b3ed', green:'#68d391', purple:'#b794f4'};
+  tbody.innerHTML = calcItems.map(item => {
+    const pos = positions.find(p => p.ticker === item.ticker);
+    if (!pos) return '';
+    const price = getCalcPrice(pos);
+    const amount = parseFloat(String(item.amount).replace(',','.')) || 0;
+    const quotes = price != null && amount > 0 ? Math.floor(amount / price) : null;
+    const effective = quotes != null && price ? quotes * price : null;
+    const tc = pos.type==='Azione'?C.blue:pos.type==='ETF'?C.green:C.purple;
+    const priceStr = price != null ? `€${fmt(price)}` : '<span style="color:#4a5568">—</span>';
+    const qHtml = quotes == null ? '—' : quotes === 0 ? '<span style="color:#fc8181">0</span>' : `<strong>${quotes}</strong>`;
+    const eHtml = (!effective || effective===0) ? '<span style="color:#4a5568">—</span>' : `€${fmt(effective)}`;
+    const safe = pos.ticker.replace(/'/g,"\\'");
+    return `<tr>
+      <td style="white-space:nowrap"><span class="ticker-badge">${pos.ticker}</span></td>
+      <td style="font-size:.78rem;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${(pos.desc||pos.ticker).replace(/"/g,'&quot;')}">${pos.desc||pos.ticker}</td>
+      <td style="font-size:.72rem;color:${tc}">${pos.type}</td>
+      <td style="text-align:right">${fmt(pos.shares,0)}</td>
+      <td style="text-align:right">${priceStr}</td>
+      <td style="text-align:right">
+        <div style="display:flex;align-items:center;gap:4px;justify-content:flex-end">
+          <span style="color:#4a5568;font-size:.72rem">€</span>
+          <input type="number" value="${item.amount}" min="0" step="1"
+            style="width:88px;background:#0f1117;border:1px solid #2d3748;border-radius:5px;color:#e2e8f0;padding:4px 7px;font-size:.82rem;text-align:right;outline:none"
+            oninput="onCalcAmountChange('${safe}',this.value)"
+            onfocus="this.style.borderColor='#4299e1'"
+            onblur="this.style.borderColor='#2d3748'">
+        </div>
+      </td>
+      <td style="text-align:right" id="cq-${pos.ticker}">${qHtml}</td>
+      <td style="text-align:right;color:#a0aec0" id="ce-${pos.ticker}">${eHtml}</td>
+      <td style="text-align:center">
+        <button onclick="removeCalcItem('${safe}')"
+          style="background:none;border:1px solid #4a5568;color:#718096;border-radius:4px;padding:2px 7px;font-size:.7rem;cursor:pointer"
+          onmouseover="this.style.borderColor='#fc8181';this.style.color='#fc8181'"
+          onmouseout="this.style.borderColor='#4a5568';this.style.color='#718096'">✕</button>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function updateCalcSummary() {
+  const summaryEl = document.getElementById('calcSummary');
+  if (!summaryEl) return;
+  const budget = parseFloat(document.getElementById('calcBudget')?.value || '0') || 0;
+  const positions = G.positions || [];
+  let totalEffective = 0;
+  for (const item of calcItems) {
+    const pos = positions.find(p => p.ticker === item.ticker);
+    if (!pos) continue;
+    const price = getCalcPrice(pos);
+    const amount = parseFloat(String(item.amount).replace(',','.')) || 0;
+    const quotes = price != null && amount > 0 ? Math.floor(amount / price) : 0;
+    totalEffective += quotes > 0 && price ? quotes * price : 0;
+  }
+  if (!calcItems.length && !budget) { summaryEl.innerHTML = ''; return; }
+  const remaining = budget > 0 ? budget - totalEffective : null;
+  const over = remaining != null && remaining < -0.005;
+  const remHtml = remaining == null ? '' :
+    over ? `<span style="color:#fc8181">−€${fmt(Math.abs(remaining))}</span>` :
+           `<span style="color:#68d391">€${fmt(remaining)}</span>`;
+  const statusHtml = over
+    ? `<span style="color:#fc8181;font-size:.75rem;font-weight:700">⚠ Sfori il budget di €${fmt(Math.abs(remaining))}</span>`
+    : (budget > 0 && totalEffective > 0
+        ? `<span style="color:#68d391;font-size:.75rem">✓ Nei limiti del budget</span>`
+        : '');
+  summaryEl.innerHTML = `
+    <div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap;padding:12px 0;border-top:1px solid #2d3748;margin-top:8px">
+      <div style="font-size:.82rem;color:#a0aec0">Totale effettivo: <strong style="color:#e2e8f0">€${fmt(totalEffective)}</strong></div>
+      ${remaining != null ? `<div style="font-size:.82rem;color:#a0aec0">Budget rimasto: <strong>${remHtml}</strong></div>` : ''}
+      ${statusHtml}
+    </div>`;
 }
 
 // ── Clear modal ──
