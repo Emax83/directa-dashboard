@@ -480,6 +480,14 @@ a.ticker-badge:hover{background:#2b6cb0;color:#fff}
     </div>
   </div>
 
+  <!-- PROVENTI PREVISTI -->
+  <div class="card">
+    <h3 class="section-title">📈 Proventi Previsti — <span id="proventiYear"></span></h3>
+    <div id="proventiPrevisti">
+      <p style="color:#4a5568;font-size:0.85rem;text-align:center;padding:20px">Carica il CSV per vedere i proventi previsti.</p>
+    </div>
+  </div>
+
   <!-- DIVIDEND CALENDAR -->
   <div class="card">
     <h3 class="section-title">📅 Calendario Dividendi &amp; Cedole</h3>
@@ -2260,6 +2268,127 @@ function closeTickerModal() {
 // ════════════════════════════════════════════════
 // DIVIDEND CALENDAR
 // ════════════════════════════════════════════════
+function renderProventiPrevisti() {
+  const el = document.getElementById('proventiPrevisti');
+  const yrEl = document.getElementById('proventiYear');
+  if (!el || !G.rows) return;
+
+  const today    = new Date();
+  const nowYear  = today.getFullYear();
+  const nowMonth = today.getMonth() + 1; // 1-12
+  const prevYear = nowYear - 1;
+
+  if (yrEl) yrEl.textContent = nowYear;
+
+  const INC = ['DIVIDEND','ETF_INCOME','COUPON'];
+
+  // Build monthly income maps: month -> total amount
+  const curMap  = {};  // current year
+  const prevMap = {};  // previous year
+  const curTick = {};  // month -> Set<ticker>
+  const prevTick= {};
+
+  for (const r of G.rows) {
+    if (!INC.includes(r.cat)) continue;
+    const t = TICKER_ALIASES[r.ticker] || r.ticker || '?';
+    const ry = r.date.getFullYear();
+    const rm = r.date.getMonth() + 1;
+    const amt = Math.abs(r.amount);
+    if (ry === nowYear) {
+      curMap[rm]  = (curMap[rm]  || 0) + amt;
+      if (!curTick[rm])  curTick[rm]  = new Set();
+      curTick[rm].add(t);
+    }
+    if (ry === prevYear) {
+      prevMap[rm] = (prevMap[rm] || 0) + amt;
+      if (!prevTick[rm]) prevTick[rm] = new Set();
+      prevTick[rm].add(t);
+    }
+  }
+
+  const hasAny = Object.keys(curMap).length || Object.keys(prevMap).length;
+  if (!hasAny) {
+    el.innerHTML = `<p style="color:#4a5568;font-size:0.85rem;text-align:center;padding:20px">Nessun reddito registrato per il ${nowYear} o ${prevYear}.</p>`;
+    return;
+  }
+
+  const MONTHS = ['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno',
+                  'Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre'];
+
+  let tbody = '';
+  let totalReceived = 0;
+  let totalEstimated = 0;
+
+  for (let m = 1; m <= 12; m++) {
+    const isFuture  = m > nowMonth;
+    const isCurrent = m === nowMonth;
+
+    let amt = 0;
+    let tickers = [];
+    let estimate = false;
+
+    if (!isFuture) {
+      // past or current month: show actual
+      amt     = curMap[m]  || 0;
+      tickers = curTick[m]  ? [...curTick[m]]  : [];
+      totalReceived += amt;
+    } else {
+      // future month: estimate from previous year
+      amt      = prevMap[m] || 0;
+      tickers  = prevTick[m] ? [...prevTick[m]] : [];
+      estimate = true;
+      totalEstimated += amt;
+    }
+
+    const amtStr  = amt > 0
+      ? `${estimate ? '~' : ''}€${fmt(amt)}`
+      : '—';
+    const amtColor = amt > 0
+      ? (estimate ? '#718096' : '#68d391')
+      : '#2d3748';
+    const rowStyle = isCurrent
+      ? 'background:rgba(104,211,145,0.05);'
+      : '';
+    const label = MONTHS[m-1] + (isCurrent ? ' ★' : estimate && amt > 0 ? ' *' : '');
+    const tickStr = tickers.join(' · ');
+
+    tbody += `<tr style="${rowStyle}">
+      <td style="padding:5px 8px;white-space:nowrap;font-size:0.82rem${isCurrent?';font-weight:700':''}">${label}</td>
+      <td style="padding:5px 8px;font-size:0.68rem;color:#4a5568">${tickStr}</td>
+      <td style="padding:5px 8px;text-align:right;color:${amtColor};font-weight:${amt>0?700:400};font-size:0.82rem">${amtStr}</td>
+    </tr>`;
+  }
+
+  el.innerHTML = `
+    <div style="overflow-x:auto">
+      <table style="width:100%;border-collapse:collapse">
+        <thead>
+          <tr style="border-bottom:1px solid #2d3748">
+            <th style="text-align:left;padding:5px 8px;font-size:0.68rem;color:#718096;text-transform:uppercase;letter-spacing:.05em">Mese</th>
+            <th style="text-align:left;padding:5px 8px;font-size:0.68rem;color:#718096;text-transform:uppercase;letter-spacing:.05em">Fonte</th>
+            <th style="text-align:right;padding:5px 8px;font-size:0.68rem;color:#718096;text-transform:uppercase;letter-spacing:.05em">Importo</th>
+          </tr>
+        </thead>
+        <tbody>${tbody}</tbody>
+        <tfoot>
+          <tr style="border-top:1px solid #2d3748">
+            <td colspan="2" style="padding:7px 8px;font-size:0.72rem;color:#a0aec0">Ricevuto ${nowYear} (YTD)</td>
+            <td style="padding:7px 8px;text-align:right;color:#68d391;font-weight:700;font-size:0.85rem">€${fmt(totalReceived)}</td>
+          </tr>
+          <tr>
+            <td colspan="2" style="padding:3px 8px 7px;font-size:0.72rem;color:#4a5568">Stima residuo anno (da ${prevYear})</td>
+            <td style="padding:3px 8px 7px;text-align:right;color:#718096;font-weight:700;font-size:0.85rem">~€${fmt(totalEstimated)}</td>
+          </tr>
+          <tr style="border-top:1px solid #2d3748">
+            <td colspan="2" style="padding:7px 8px;font-size:0.72rem;color:#e2e8f0">Totale anno atteso</td>
+            <td style="padding:7px 8px;text-align:right;color:#f6ad55;font-weight:700;font-size:0.9rem">~€${fmt(totalReceived+totalEstimated)}</td>
+          </tr>
+        </tfoot>
+      </table>
+      <p style="color:#4a5568;font-size:0.65rem;margin-top:6px;padding:0 4px">★ Mese corrente &nbsp;·&nbsp; * Stima basata sui pagamenti ${prevYear}</p>
+    </div>`;
+}
+
 function renderDivCalendar() {
   const el = document.getElementById('divCalendar');
   if (!el || !G.rows) return;
@@ -2415,6 +2544,7 @@ function renderDashboard(rows) {
   fillCoupons(payers.coup);
   renderRealizedPL(realizedByYear);
   renderMovimenti();
+  renderProventiPrevisti();
   renderDivCalendar();
 
   // Show dashboard
