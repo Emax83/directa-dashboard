@@ -248,6 +248,20 @@ a.ticker-badge:hover{background:#2b6cb0;color:#fff}
 .table-search:focus{border-color:#4299e1}
 .table-search::placeholder{color:#4a5568}
 
+/* ── WATCHLIST ── */
+.wl-search-wrap{display:flex;gap:8px;margin-bottom:10px}
+.wl-search-input{flex:1;background:#0f1117;border:1px solid #2d3748;border-radius:6px;color:#e2e8f0;padding:7px 12px;font-size:0.82rem;outline:none}
+.wl-search-input:focus{border-color:#4299e1}
+.wl-search-input::placeholder{color:#4a5568}
+.wl-search-btn{background:#1a365d;border:1px solid #2b6cb0;color:#63b3ed;border-radius:6px;padding:7px 14px;font-size:0.82rem;cursor:pointer;white-space:nowrap;transition:all .15s}
+.wl-search-btn:hover{background:#2b6cb0;color:#fff}
+.wl-results{background:#0f1117;border:1px solid #2d3748;border-radius:8px;margin-bottom:12px;overflow:hidden}
+.wl-result-item{padding:9px 12px;cursor:pointer;border-bottom:1px solid #1a1d2e;display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:0.82rem}
+.wl-result-item:last-child{border-bottom:none}
+.wl-result-item:hover{background:#1a1d2e}
+.wl-remove-btn{background:none;border:1px solid #4a5568;color:#718096;border-radius:4px;padding:2px 8px;font-size:0.72rem;cursor:pointer;transition:all .15s}
+.wl-remove-btn:hover{border-color:#fc8181;color:#fc8181}
+
 /* ── HEADER ACTION BUTTONS ── */
 .hdr-btn{background:none;border:1px solid #2d3748;border-radius:6px;color:#a0aec0;padding:5px 10px;font-size:0.72rem;cursor:pointer;white-space:nowrap;transition:all .15s}
 .hdr-btn:hover{border-color:#718096;color:#e2e8f0}
@@ -531,6 +545,46 @@ a.ticker-badge:hover{background:#2b6cb0;color:#fff}
     </div>
     <div style="color:#4a5568;font-size:0.7rem;margin-top:8px">
       ⚠️ Certificati BPA: prezzi non disponibili su Yahoo Finance. Ultimo aggiornamento: <span id="lastUpdate">—</span>
+    </div>
+  </div>
+
+  <!-- WATCHLIST -->
+  <div class="card">
+    <div class="card-header">
+      <h3>⭐ Watchlist</h3>
+      <div style="display:flex;align-items:center;gap:8px">
+        <div class="live-badge">
+          <div class="dot" id="wlDot" style="background:#718096"></div>
+          <span id="wlStatusText">—</span>
+        </div>
+        <button class="refresh-btn" onclick="fetchWatchlistPrices(true)">↻ Aggiorna</button>
+      </div>
+    </div>
+    <div class="wl-search-wrap">
+      <input class="wl-search-input" id="wlInput" type="text" placeholder="🔍 Cerca ticker, ISIN, nome…" onkeydown="if(event.key==='Enter')searchWatchlist()">
+      <button class="wl-search-btn" onclick="searchWatchlist()">Cerca</button>
+    </div>
+    <div id="wlResults"></div>
+    <div class="live-table-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Ticker</th>
+            <th>Strumento</th>
+            <th>Tipo</th>
+            <th style="text-align:right">Prezzo</th>
+            <th style="text-align:right">Var. Oggi</th>
+            <th style="text-align:right">Perf.</th>
+            <th style="text-align:right">P.Aggiunto</th>
+            <th style="text-align:right">Aggiunto il</th>
+            <th style="text-align:right">Agg.</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="watchlistTable">
+          <tr><td colspan="10" style="text-align:center;color:#4a5568;padding:24px">Usa la ricerca sopra per aggiungere strumenti alla watchlist.</td></tr>
+        </tbody>
+      </table>
     </div>
   </div>
 
@@ -2261,6 +2315,173 @@ function closeTickerModal() {
 // ════════════════════════════════════════════════
 // DIVIDEND CALENDAR
 // ════════════════════════════════════════════════
+// ══ WATCHLIST ══
+const WL_KEY = 'directa_watchlist_v1';
+
+function loadWatchlist() {
+  try { return JSON.parse(localStorage.getItem(WL_KEY) || '[]'); } catch(e) { return []; }
+}
+function saveWatchlist(list) {
+  try { localStorage.setItem(WL_KEY, JSON.stringify(list)); } catch(e) {}
+}
+
+async function searchWatchlist() {
+  const q = (document.getElementById('wlInput').value || '').trim();
+  if (!q) return;
+  const el = document.getElementById('wlResults');
+  el.innerHTML = '<div class="wl-results"><div class="wl-result-item" style="color:#718096">Cercando…</div></div>';
+
+  const url = `https://query1.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(q)}&quotesCount=8&newsCount=0&listsCount=0`;
+  const text = await fetchTextProxy(url);
+  if (!text) {
+    el.innerHTML = '<div class="wl-results"><div class="wl-result-item" style="color:#fc8181">Errore nella ricerca. Riprova.</div></div>';
+    return;
+  }
+  let data;
+  try { data = JSON.parse(text); } catch(e) {
+    el.innerHTML = '<div class="wl-results"><div class="wl-result-item" style="color:#fc8181">Risposta non valida.</div></div>';
+    return;
+  }
+  const quotes = (data?.quotes || []).filter(x => x.symbol && x.quoteType !== 'OPTION' && x.quoteType !== 'MUTUALFUND');
+  if (!quotes.length) {
+    el.innerHTML = '<div class="wl-results"><div class="wl-result-item" style="color:#4a5568">Nessun risultato.</div></div>';
+    return;
+  }
+  const items = quotes.slice(0, 6).map(x => {
+    const sym  = x.symbol.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+    const name = (x.shortname || x.longname || '').replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+    const type = (x.quoteType || '').replace(/'/g,"\\'");
+    const exch = (x.exchange || '').replace(/'/g,"\\'");
+    return `<div class="wl-result-item" onclick="addToWatchlist('${sym}','${name}','${type}','${exch}')">
+      <div style="min-width:0">
+        <strong style="color:#e2e8f0">${x.symbol}</strong>
+        <span style="color:#a0aec0;margin-left:8px">${x.shortname || x.longname || ''}</span>
+      </div>
+      <span style="color:#4a5568;font-size:0.72rem;white-space:nowrap">${x.exchange || ''}${x.quoteType ? ' · '+x.quoteType : ''}</span>
+    </div>`;
+  }).join('');
+  el.innerHTML = `<div class="wl-results">${items}</div>`;
+}
+
+async function addToWatchlist(yahoo, name, type, exchange) {
+  const list = loadWatchlist();
+  if (list.find(x => x.yahoo === yahoo)) {
+    document.getElementById('wlResults').innerHTML =
+      `<div class="wl-results"><div class="wl-result-item" style="color:#f6ad55">${yahoo} è già in watchlist.</div></div>`;
+    return;
+  }
+  document.getElementById('wlResults').innerHTML =
+    `<div class="wl-results"><div class="wl-result-item" style="color:#718096">Recupero prezzo per ${yahoo}…</div></div>`;
+
+  const q = await scrapeSinglePrice(yahoo);
+  const priceAtAdd = q?.regularMarketPrice ?? null;
+  const typeLabel = type === 'ETF' ? 'ETF' : type === 'EQUITY' ? 'Azione' : type || '—';
+
+  list.push({ yahoo, name, type: typeLabel, exchange, addedAt: new Date().toISOString(), priceAtAdd });
+  saveWatchlist(list);
+
+  if (q) { const c = loadPriceCache(); c[yahoo] = q; savePriceCache(c); }
+
+  document.getElementById('wlResults').innerHTML = '';
+  document.getElementById('wlInput').value = '';
+  renderWatchlist();
+}
+
+function removeFromWatchlist(yahoo) {
+  saveWatchlist(loadWatchlist().filter(x => x.yahoo !== yahoo));
+  renderWatchlist();
+}
+
+async function fetchWatchlistPrices(forceRefresh = false) {
+  const list = loadWatchlist();
+  if (!list.length) return;
+
+  const dot = document.getElementById('wlDot');
+  const stEl = document.getElementById('wlStatusText');
+  if (dot) dot.style.background = '#f6ad55';
+
+  const cache = loadPriceCache();
+  const toFetch = forceRefresh ? list : list.filter(x => !isPriceFresh(cache[x.yahoo]));
+
+  if (!toFetch.length) {
+    const last = list.map(x => cache[x.yahoo]?.fetchedAt).filter(Boolean).sort().pop() || '';
+    if (stEl) stEl.textContent = last ? 'Cache ' + new Date(last).toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'}) : 'Cache ok';
+    if (dot)  dot.style.background = '#48bb78';
+    renderWatchlist();
+    return;
+  }
+
+  for (let i = 0; i < toFetch.length; i++) {
+    const item = toFetch[i];
+    if (stEl) stEl.textContent = `${i+1}/${toFetch.length} ${item.yahoo}…`;
+    const q = await scrapeSinglePrice(item.yahoo);
+    if (q) { cache[item.yahoo] = q; savePriceCache(cache); }
+    if (i < toFetch.length - 1) await new Promise(r => setTimeout(r, 500));
+  }
+
+  if (dot)  dot.style.background = '#48bb78';
+  if (stEl) stEl.textContent = 'Agg. ' + new Date().toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'});
+  renderWatchlist();
+}
+
+function renderWatchlist() {
+  const tbody = document.getElementById('watchlistTable');
+  if (!tbody) return;
+  const list  = loadWatchlist();
+  const cache = loadPriceCache();
+
+  if (!list.length) {
+    tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;color:#4a5568;padding:24px">Nessun titolo. Usa la ricerca sopra per aggiungere strumenti.</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = list.map(item => {
+    const q     = cache[item.yahoo];
+    const price = q?.regularMarketPrice ?? null;
+    const chg   = q?.regularMarketChange ?? null;
+    const chgP  = q?.regularMarketChangePercent ?? null;
+
+    const priceStr = price != null ? '€' + fmt(price) : '—';
+    const chgColor = chg != null ? (chg >= 0 ? '#68d391' : '#fc8181') : '';
+    const varStr = chg != null && chgP != null
+      ? `<span style="color:${chgColor}">${chg>=0?'+':''}${fmt(chg)}<br><small>${chgP>=0?'+':''}${fmt(chgP)}%</small></span>`
+      : '—';
+
+    let perfStr = '—';
+    if (price != null && item.priceAtAdd > 0) {
+      const perf = (price - item.priceAtAdd) / item.priceAtAdd * 100;
+      perfStr = `<span style="color:${perf>=0?'#68d391':'#fc8181'};font-weight:700">${perf>=0?'+':''}${fmt(perf)}%</span>`;
+    }
+
+    const addedDate = item.addedAt
+      ? new Date(item.addedAt).toLocaleDateString('it-IT',{day:'2-digit',month:'2-digit',year:'2-digit'})
+      : '—';
+    const priceAddStr = item.priceAtAdd != null ? '€'+fmt(item.priceAtAdd) : '—';
+
+    const fetchedStr = (() => {
+      if (!q?.fetchedAt) return '—';
+      const d = new Date(q.fetchedAt), now = new Date();
+      return d.toDateString() === now.toDateString()
+        ? d.toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'})
+        : String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0');
+    })();
+
+    const sym = item.yahoo.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+    return `<tr>
+      <td><strong>${item.yahoo}</strong></td>
+      <td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${item.name||''}">${item.name||'—'}</td>
+      <td style="font-size:0.75rem;color:#a0aec0">${item.type||'—'}</td>
+      <td style="text-align:right;font-weight:700">${priceStr}</td>
+      <td style="text-align:right;font-size:0.82rem;line-height:1.4">${varStr}</td>
+      <td style="text-align:right">${perfStr}</td>
+      <td style="text-align:right;color:#718096;font-size:0.78rem">${priceAddStr}</td>
+      <td style="text-align:right;color:#718096;font-size:0.78rem">${addedDate}</td>
+      <td style="text-align:right;color:#4a5568;font-size:0.73rem">${fetchedStr}</td>
+      <td style="text-align:right"><button class="wl-remove-btn" onclick="removeFromWatchlist('${sym}')">✕</button></td>
+    </tr>`;
+  }).join('');
+}
+
 function renderProventiPrevisti() {
   const valEl  = document.getElementById('kpiProv');
   const subEl  = document.getElementById('kpiProvSub');
@@ -2478,8 +2699,9 @@ function renderDashboard(rows) {
   document.getElementById('uploadZone').style.display = 'none';
   document.getElementById('dashboard').style.display  = 'block';
 
-  // Fetch live prices
+  // Fetch live prices (portfolio + watchlist)
   fetchPrices();
+  fetchWatchlistPrices();
 }
 
 // ════════════════════════════════════════════════
@@ -2606,6 +2828,8 @@ function loadFile(file, mode = 'full') {
 
 // ── Auto-load from cache on startup ──
 document.addEventListener('DOMContentLoaded', () => {
+  renderWatchlist();
+  fetchWatchlistPrices();
   const cached = loadFromCache();
   if (cached && cached.length >= 5) {
     renderDashboard(cached);
