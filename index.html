@@ -1571,6 +1571,7 @@ function fillCoupons(data) {
 // LIVE PRICES  (HTML scraping · sequential · localStorage cache)
 // ════════════════════════════════════════════════
 const PRICE_CACHE_KEY = 'directa_prices_v1';
+const CALC_KEY        = 'directa_calc_v1';
 const PROXIES = [
   u => `/api/proxy?url=${encodeURIComponent(u)}`,                         // Vercel serverless (deployed)
   u => `https://corsproxy.io/?${encodeURIComponent(u)}`,                  // fallback locale
@@ -2838,6 +2839,9 @@ function renderDashboard(rows) {
   document.getElementById('uploadZone').style.display = 'none';
   document.getElementById('dashboard').style.display  = 'block';
 
+  // If calc modal is open, refresh liquidity display (amounts/items unchanged)
+  if (document.getElementById('calcModal')?.style.display !== 'none') refreshCalcLiquidity();
+
   // Fetch live prices (portfolio + watchlist)
   fetchPrices();
   fetchWatchlistPrices();
@@ -2899,6 +2903,8 @@ function loadFromCache() {
 function clearCache() {
   localStorage.removeItem(CACHE_KEY);
   localStorage.removeItem(CACHE_META_KEY);
+  localStorage.removeItem(CALC_KEY);
+  calcItems = [];
 }
 
 function getCacheMeta() {
@@ -2929,20 +2935,41 @@ function updateDataInfo(rows) {
 // ══ CALCOLATORE ══
 let calcItems = []; // [{ticker, amount}]
 
+function saveCalcState() {
+  try {
+    const newFunds = parseFloat(document.getElementById('calcBudget')?.value || '0') || 0;
+    localStorage.setItem(CALC_KEY, JSON.stringify({ newFunds, items: calcItems }));
+  } catch(e) {}
+}
+function loadCalcState() {
+  try {
+    const raw = localStorage.getItem(CALC_KEY);
+    if (!raw) return;
+    const s = JSON.parse(raw);
+    calcItems = Array.isArray(s.items) ? s.items : [];
+    const inp = document.getElementById('calcBudget');
+    if (inp && s.newFunds > 0) inp.value = s.newFunds.toFixed(2);
+  } catch(e) {}
+}
+
 function getCalcLiquidity() {
   const txt = (document.getElementById('kpiLiq')?.textContent || '').replace(/[^\d,.]/g,'');
   const num = parseFloat(txt.replace(/\./g,'').replace(',','.'));
   return isNaN(num) ? 0 : num;
 }
 
-function openCalcModal() {
-  if (!G.positions || !G.positions.length) return;
-  document.getElementById('calcModal').style.display = 'flex';
-  document.body.style.overflow = 'hidden';
-  // Show current liquidity
+function refreshCalcLiquidity() {
   const liq = getCalcLiquidity();
   const liqEl = document.getElementById('calcLiqDisplay');
   if (liqEl) liqEl.textContent = liq > 0 ? `€${fmt(liq)}` : '—';
+}
+
+function openCalcModal() {
+  if (!G.positions || !G.positions.length) return;
+  loadCalcState();
+  document.getElementById('calcModal').style.display = 'flex';
+  document.body.style.overflow = 'hidden';
+  refreshCalcLiquidity();
   renderCalcPicker();
   renderCalcTable();
   updateCalcSummary();
@@ -2981,6 +3008,7 @@ function renderCalcPicker() {
 function addCalcItem(ticker) {
   if (calcItems.find(x => x.ticker === ticker)) return;
   calcItems.push({ ticker, amount: '' });
+  saveCalcState();
   renderCalcPicker();
   renderCalcTable();
   updateCalcSummary();
@@ -2988,6 +3016,7 @@ function addCalcItem(ticker) {
 
 function removeCalcItem(ticker) {
   calcItems = calcItems.filter(x => x.ticker !== ticker);
+  saveCalcState();
   renderCalcPicker();
   renderCalcTable();
   updateCalcSummary();
@@ -2997,6 +3026,7 @@ function onCalcAmountChange(ticker, val) {
   const item = calcItems.find(x => x.ticker === ticker);
   if (!item) return;
   item.amount = val;
+  saveCalcState();
   // Update only the derived cells — do NOT re-render entire table (would lose focus)
   const pos = (G.positions||[]).find(p => p.ticker === ticker);
   if (!pos) return;
@@ -3071,6 +3101,7 @@ function renderCalcTable() {
 function updateCalcSummary() {
   const summaryEl = document.getElementById('calcSummary');
   if (!summaryEl) return;
+  saveCalcState();
   const newFunds = parseFloat(document.getElementById('calcBudget')?.value || '0') || 0;
   const liq = getCalcLiquidity();
   const totalAvail = newFunds + liq;
