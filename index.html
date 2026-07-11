@@ -689,17 +689,26 @@ a.ticker-badge:hover{background:#2b6cb0;color:#fff}
     <h2>🧮 Calcolatore Acquisti</h2>
 
     <!-- Budget row -->
-    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:16px;padding:12px 14px;background:#0f1117;border:1px solid #2d3748;border-radius:8px">
-      <span style="font-size:.78rem;color:#a0aec0;white-space:nowrap">Cifra disponibile:</span>
+    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:16px;padding:12px 14px;background:#0f1117;border:1px solid #2d3748;border-radius:8px">
       <div style="display:flex;align-items:center;gap:6px">
+        <span style="font-size:.78rem;color:#a0aec0;white-space:nowrap">Nuovi fondi:</span>
         <span style="color:#718096;font-size:.85rem">€</span>
         <input type="number" id="calcBudget" min="0" step="0.01" placeholder="0.00"
-          style="width:120px;background:#1a1d2e;border:1px solid #2d3748;border-radius:6px;color:#e2e8f0;padding:6px 10px;font-size:.88rem;text-align:right;outline:none"
+          style="width:110px;background:#1a1d2e;border:1px solid #2d3748;border-radius:6px;color:#e2e8f0;padding:6px 10px;font-size:.88rem;text-align:right;outline:none"
           oninput="updateCalcSummary()"
           onfocus="this.style.borderColor='#4299e1'"
           onblur="this.style.borderColor='#2d3748'">
       </div>
-      <button onclick="prefillCalcBudget()" style="background:#1a2744;border:1px solid #2b6cb0;color:#63b3ed;border-radius:6px;padding:6px 12px;font-size:.75rem;cursor:pointer;white-space:nowrap" onmouseover="this.style.background='#2b6cb0'" onmouseout="this.style.background='#1a2744'">Da liquidità</button>
+      <span style="color:#4a5568;font-size:.9rem">+</span>
+      <div style="display:flex;align-items:center;gap:5px">
+        <span style="font-size:.78rem;color:#a0aec0;white-space:nowrap">Liquidità:</span>
+        <span id="calcLiqDisplay" style="font-size:.88rem;color:#68d391;font-weight:600">—</span>
+      </div>
+      <span style="color:#4a5568;font-size:.9rem">=</span>
+      <div style="display:flex;align-items:center;gap:5px">
+        <span style="font-size:.78rem;color:#a0aec0;white-space:nowrap">Totale disponibile:</span>
+        <span id="calcTotalAvail" style="font-size:.92rem;color:#e2e8f0;font-weight:700">—</span>
+      </div>
     </div>
 
     <!-- Picker -->
@@ -2920,10 +2929,20 @@ function updateDataInfo(rows) {
 // ══ CALCOLATORE ══
 let calcItems = []; // [{ticker, amount}]
 
+function getCalcLiquidity() {
+  const txt = (document.getElementById('kpiLiq')?.textContent || '').replace(/[^\d,.]/g,'');
+  const num = parseFloat(txt.replace(/\./g,'').replace(',','.'));
+  return isNaN(num) ? 0 : num;
+}
+
 function openCalcModal() {
   if (!G.positions || !G.positions.length) return;
   document.getElementById('calcModal').style.display = 'flex';
   document.body.style.overflow = 'hidden';
+  // Show current liquidity
+  const liq = getCalcLiquidity();
+  const liqEl = document.getElementById('calcLiqDisplay');
+  if (liqEl) liqEl.textContent = liq > 0 ? `€${fmt(liq)}` : '—';
   renderCalcPicker();
   renderCalcTable();
   updateCalcSummary();
@@ -2999,14 +3018,6 @@ function onCalcAmountChange(ticker, val) {
   updateCalcSummary();
 }
 
-function prefillCalcBudget() {
-  const txt = (document.getElementById('kpiLiq')?.textContent || '').replace(/[^\d,.]/g,'');
-  const num = parseFloat(txt.replace(/\./g,'').replace(',','.'));
-  if (!isNaN(num) && num > 0) {
-    document.getElementById('calcBudget').value = num.toFixed(2);
-    updateCalcSummary();
-  }
-}
 
 function renderCalcTable() {
   const tbody = document.getElementById('calcTableBody');
@@ -3060,7 +3071,14 @@ function renderCalcTable() {
 function updateCalcSummary() {
   const summaryEl = document.getElementById('calcSummary');
   if (!summaryEl) return;
-  const budget = parseFloat(document.getElementById('calcBudget')?.value || '0') || 0;
+  const newFunds = parseFloat(document.getElementById('calcBudget')?.value || '0') || 0;
+  const liq = getCalcLiquidity();
+  const totalAvail = newFunds + liq;
+
+  // Update "Totale disponibile" display
+  const availEl = document.getElementById('calcTotalAvail');
+  if (availEl) availEl.textContent = totalAvail > 0 ? `€${fmt(totalAvail)}` : '—';
+
   const positions = G.positions || [];
   let totalEffective = 0;
   for (const item of calcItems) {
@@ -3071,20 +3089,20 @@ function updateCalcSummary() {
     const quotes = price != null && amount > 0 ? Math.floor(amount / price) : 0;
     totalEffective += quotes > 0 && price ? quotes * price : 0;
   }
-  if (!calcItems.length && !budget) { summaryEl.innerHTML = ''; return; }
-  const remaining = budget > 0 ? budget - totalEffective : null;
+  if (!calcItems.length) { summaryEl.innerHTML = ''; return; }
+  const remaining = totalAvail > 0 ? totalAvail - totalEffective : null;
   const over = remaining != null && remaining < -0.005;
   const remHtml = remaining == null ? '' :
     over ? `<span style="color:#fc8181">−€${fmt(Math.abs(remaining))}</span>` :
            `<span style="color:#68d391">€${fmt(remaining)}</span>`;
   const statusHtml = over
     ? `<span style="color:#fc8181;font-size:.75rem;font-weight:700">⚠ Sfori il budget di €${fmt(Math.abs(remaining))}</span>`
-    : (budget > 0 && totalEffective > 0
+    : (totalEffective > 0
         ? `<span style="color:#68d391;font-size:.75rem">✓ Nei limiti del budget</span>`
         : '');
   summaryEl.innerHTML = `
     <div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap;padding:12px 0;border-top:1px solid #2d3748;margin-top:8px">
-      <div style="font-size:.82rem;color:#a0aec0">Totale effettivo: <strong style="color:#e2e8f0">€${fmt(totalEffective)}</strong></div>
+      <div style="font-size:.82rem;color:#a0aec0">Totale da spendere: <strong style="color:#e2e8f0">€${fmt(totalEffective)}</strong></div>
       ${remaining != null ? `<div style="font-size:.82rem;color:#a0aec0">Budget rimasto: <strong>${remHtml}</strong></div>` : ''}
       ${statusHtml}
     </div>`;
