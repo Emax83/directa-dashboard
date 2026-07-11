@@ -2325,7 +2325,8 @@ function renderDivCalendar() {
   const prevYr = yr - 1;
 
   // A month is "future" if it hasn't happened yet in the selected year
-  const isFuture = m => yr > nowYear || (yr === nowYear && m > nowMonth);
+  const isFuture  = m => yr > nowYear || (yr === nowYear && m > nowMonth);
+  const isCurrent = m => yr === nowYear && m === nowMonth;
 
   // Build data maps: ticker -> { month: amount }
   const curData  = {};
@@ -2341,11 +2342,12 @@ function renderDivCalendar() {
     if (ry === prevYr) { if (!prevData[ticker]) prevData[ticker] = {}; prevData[ticker][rm] = (prevData[ticker][rm] || 0) + amt; }
   }
 
-  // Tickers: present this year OR in prev year for any future month
+  // Tickers: present this year OR in prev year for any future/current-without-data month
   const tickerSet = new Set(Object.keys(curData));
   for (const [t, mMap] of Object.entries(prevData)) {
     for (const m of Object.keys(mMap)) {
-      if (isFuture(parseInt(m))) { tickerSet.add(t); break; }
+      const mi = parseInt(m);
+      if (isFuture(mi) || (isCurrent(mi) && !(curData[t]?.[mi] > 0))) { tickerSet.add(t); break; }
     }
   }
 
@@ -2356,7 +2358,8 @@ function renderDivCalendar() {
 
   const MONTHS_SHORT = ['Gen','Feb','Mar','Apr','Mag','Giu','Lug','Ago','Set','Ott','Nov','Dic'];
   const tickers = [...tickerSet].sort();
-  const mTot = new Array(13).fill(0); // 1-indexed
+  const mTot   = new Array(13).fill(0); // 1-indexed
+  const mIsEst = new Array(13).fill(false);
   let grandTotal = 0;
   const isinMap = buildIsinMap();
 
@@ -2366,13 +2369,19 @@ function renderDivCalendar() {
     let rowTotal = 0;
     let cells = '';
     for (let m = 1; m <= 12; m++) {
-      const fut = isFuture(m);
-      const amt = fut ? (prevData[t]?.[m] || 0) : (curData[t]?.[m] || 0);
+      const fut     = isFuture(m);
+      const cur     = isCurrent(m);
+      const curAmt  = curData[t]?.[m]  || 0;
+      const prevAmt = prevData[t]?.[m] || 0;
+      // Current month: if nothing received yet, show prev-year estimate
+      const useEst  = fut || (cur && curAmt === 0);
+      const amt     = useEst ? prevAmt : curAmt;
       rowTotal   += amt;
       mTot[m]    += amt;
       grandTotal += amt;
+      if (useEst && amt > 0) mIsEst[m] = true;
       if (amt > 0) {
-        cells += `<td class="${fut ? 'cell-future' : 'cell-past'}">${fut ? '~' : ''}€${fmt(amt)}</td>`;
+        cells += `<td class="${useEst ? 'cell-future' : 'cell-past'}">${useEst ? '~' : ''}€${fmt(amt)}</td>`;
       } else {
         cells += `<td class="cell-empty">—</td>`;
       }
@@ -2389,21 +2398,23 @@ function renderDivCalendar() {
     </tr>`;
   }
 
-  // Header: mark future months
+  // Header: mark future months and current month with estimate
   const thCols = MONTHS_SHORT.map((name, i) => {
-    const m = i + 1, fut = isFuture(m);
-    return `<th style="text-align:right${fut ? ';color:#4a5568;font-style:italic' : ''}">${name}${fut ? '*' : ''}</th>`;
+    const m = i + 1, fut = isFuture(m), cur = isCurrent(m) && mIsEst[m];
+    const style = fut ? ';color:#4a5568;font-style:italic' : cur ? ';color:#f6ad55' : '';
+    const badge = fut ? '*' : cur ? '~' : '';
+    return `<th style="text-align:right${style}">${name}${badge}</th>`;
   }).join('');
 
   // Footer totals
   const tfCols = Array.from({length:12}, (_, i) => {
-    const m = i + 1, v = mTot[m], fut = isFuture(m);
-    if (v > 0) return `<td style="text-align:right;color:${fut ? '#718096' : '#f6ad55'};font-weight:700">${fut ? '~' : ''}€${fmt(v)}</td>`;
+    const m = i + 1, v = mTot[m], est = mIsEst[m];
+    if (v > 0) return `<td style="text-align:right;color:${est ? '#718096' : '#f6ad55'};font-weight:700">${est ? '~' : ''}€${fmt(v)}</td>`;
     return `<td style="text-align:right;color:#2d3748">—</td>`;
   }).join('');
 
   const note = yr >= nowYear
-    ? `<p style="color:#4a5568;font-size:0.69rem;margin-top:6px">* Mesi futuri: stima basata sui pagamenti ${prevYr}</p>`
+    ? `<p style="color:#4a5568;font-size:0.69rem;margin-top:6px">~ Stima basata sui pagamenti ${prevYr} (mese corrente senza incassi o mesi futuri)</p>`
     : '';
 
   el.innerHTML = `
