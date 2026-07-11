@@ -2325,13 +2325,24 @@ function saveWatchlist(list) {
   try { localStorage.setItem(WL_KEY, JSON.stringify(list)); } catch(e) {}
 }
 
+// Returns the cache key for a watchlist item (yahoo symbol or ISIN for certs)
+function wlKey(item) { return item.yahoo || item.isin || ''; }
+
 async function searchWatchlist() {
-  const q = (document.getElementById('wlInput').value || '').trim();
-  if (!q) return;
+  const raw = (document.getElementById('wlInput').value || '').trim();
+  if (!raw) return;
+  const q  = raw.toUpperCase();
   const el = document.getElementById('wlResults');
+
+  // BNP Paribas certificate: ISIN starting with NLBNPIT (12 chars)
+  if (/^NLBNPIT[A-Z0-9]{5}$/.test(q)) {
+    await lookupBNPCertificate(q);
+    return;
+  }
+
   el.innerHTML = '<div class="wl-results"><div class="wl-result-item" style="color:#718096">Cercando…</div></div>';
 
-  const url = `https://query1.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(q)}&quotesCount=8&newsCount=0&listsCount=0`;
+  const url = `https://query1.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(raw)}&quotesCount=8&newsCount=0&listsCount=0`;
   const text = await fetchTextProxy(url);
   if (!text) {
     el.innerHTML = '<div class="wl-results"><div class="wl-result-item" style="color:#fc8181">Errore nella ricerca. Riprova.</div></div>';
@@ -2352,7 +2363,7 @@ async function searchWatchlist() {
     const name = (x.shortname || x.longname || '').replace(/\\/g,'\\\\').replace(/'/g,"\\'");
     const type = (x.quoteType || '').replace(/'/g,"\\'");
     const exch = (x.exchange || '').replace(/'/g,"\\'");
-    return `<div class="wl-result-item" onclick="addToWatchlist('${sym}','${name}','${type}','${exch}')">
+    return `<div class="wl-result-item" onclick="addToWatchlist('${sym}','${name}','${type}','${exch}',null)">
       <div style="min-width:0">
         <strong style="color:#e2e8f0">${x.symbol}</strong>
         <span style="color:#a0aec0;margin-left:8px">${x.shortname || x.longname || ''}</span>
@@ -2363,32 +2374,76 @@ async function searchWatchlist() {
   el.innerHTML = `<div class="wl-results">${items}</div>`;
 }
 
-async function addToWatchlist(yahoo, name, type, exchange) {
+async function lookupBNPCertificate(isin) {
+  const el = document.getElementById('wlResults');
+  el.innerHTML = '<div class="wl-results"><div class="wl-result-item" style="color:#718096">Ricerca certificato BNP Paribas…</div></div>';
+
+  const html = await fetchTextProxy(`https://investimenti.bnpparibas.it/product-details/${isin}/`);
+  if (!html) {
+    el.innerHTML = '<div class="wl-results"><div class="wl-result-item" style="color:#fc8181">Certificato non trovato su BNP Paribas. Verifica l\'ISIN.</div></div>';
+    return;
+  }
+
+  // Extract product name: try <title>, then <h1>
+  let name = isin;
+  const mTitle = html.match(/<title[^>]*>([^<]{4,})<\/title>/i);
+  if (mTitle) name = mTitle[1].trim().replace(/^BNP\s*Paribas\s*Certificates?\s*[-–—]\s*/i, '').trim();
+  const mH1 = html.match(/<h1[^>]*>([^<]{4,})<\/h1>/i);
+  if (mH1 && mH1[1].trim().length > name.length) name = mH1[1].trim();
+
+  // Extract mid price for preview
+  const parseIT = s => parseFloat(s.replace(/\./g,'').replace(',','.'));
+  const mBid = html.match(/data-field="bid"[^>]*>\s*([\d.,]+)/);
+  const mAsk = html.match(/data-field="ask"[^>]*>\s*([\d.,]+)/);
+  const bid = mBid ? parseIT(mBid[1]) : null;
+  const ask = mAsk ? parseIT(mAsk[1]) : null;
+  const mid = bid != null && ask != null ? (bid+ask)/2 : (bid ?? ask);
+  const priceHint = mid ? ` · Mid €${fmt(mid)}` : '';
+
+  const safeIsin = isin.replace(/'/g,"\\'");
+  const safeName = name.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+
+  el.innerHTML = `<div class="wl-results">
+    <div class="wl-result-item" onclick="addToWatchlist(null,'${safeName}','Certif.','BNP','${safeIsin}')">
+      <div style="min-width:0">
+        <strong style="color:#b794f4">${isin}</strong>
+        <span style="color:#a0aec0;margin-left:8px">${name}</span>
+      </div>
+      <span style="color:#4a5568;font-size:0.72rem;white-space:nowrap">BNP · Certif.${priceHint}</span>
+    </div>
+  </div>`;
+}
+
+async function addToWatchlist(yahoo, name, type, exchange, isin) {
   const list = loadWatchlist();
-  if (list.find(x => x.yahoo === yahoo)) {
+  const key  = yahoo || isin;
+  if (list.find(x => wlKey(x) === key)) {
     document.getElementById('wlResults').innerHTML =
-      `<div class="wl-results"><div class="wl-result-item" style="color:#f6ad55">${yahoo} è già in watchlist.</div></div>`;
+      `<div class="wl-results"><div class="wl-result-item" style="color:#f6ad55">${key} è già in watchlist.</div></div>`;
     return;
   }
   document.getElementById('wlResults').innerHTML =
-    `<div class="wl-results"><div class="wl-result-item" style="color:#718096">Recupero prezzo per ${yahoo}…</div></div>`;
+    `<div class="wl-results"><div class="wl-result-item" style="color:#718096">Recupero prezzo per ${key}…</div></div>`;
 
-  const q = await scrapeSinglePrice(yahoo);
+  let q = null;
+  if (yahoo)     q = await scrapeSinglePrice(yahoo);
+  else if (isin) q = await scrapeBNPPrice(isin);
+
   const priceAtAdd = q?.regularMarketPrice ?? null;
-  const typeLabel = type === 'ETF' ? 'ETF' : type === 'EQUITY' ? 'Azione' : type || '—';
+  const typeLabel  = type === 'ETF' ? 'ETF' : type === 'EQUITY' ? 'Azione' : type || '—';
 
-  list.push({ yahoo, name, type: typeLabel, exchange, addedAt: new Date().toISOString(), priceAtAdd });
+  list.push({ yahoo: yahoo || null, isin: isin || null, name, type: typeLabel, exchange, addedAt: new Date().toISOString(), priceAtAdd });
   saveWatchlist(list);
 
-  if (q) { const c = loadPriceCache(); c[yahoo] = q; savePriceCache(c); }
+  if (q) { const c = loadPriceCache(); c[key] = q; savePriceCache(c); }
 
   document.getElementById('wlResults').innerHTML = '';
   document.getElementById('wlInput').value = '';
   renderWatchlist();
 }
 
-function removeFromWatchlist(yahoo) {
-  saveWatchlist(loadWatchlist().filter(x => x.yahoo !== yahoo));
+function removeFromWatchlist(key) {
+  saveWatchlist(loadWatchlist().filter(x => wlKey(x) !== key));
   renderWatchlist();
 }
 
@@ -2396,15 +2451,15 @@ async function fetchWatchlistPrices(forceRefresh = false) {
   const list = loadWatchlist();
   if (!list.length) return;
 
-  const dot = document.getElementById('wlDot');
+  const dot  = document.getElementById('wlDot');
   const stEl = document.getElementById('wlStatusText');
   if (dot) dot.style.background = '#f6ad55';
 
-  const cache = loadPriceCache();
-  const toFetch = forceRefresh ? list : list.filter(x => !isPriceFresh(cache[x.yahoo]));
+  const cache   = loadPriceCache();
+  const toFetch = forceRefresh ? list : list.filter(x => !isPriceFresh(cache[wlKey(x)]));
 
   if (!toFetch.length) {
-    const last = list.map(x => cache[x.yahoo]?.fetchedAt).filter(Boolean).sort().pop() || '';
+    const last = list.map(x => cache[wlKey(x)]?.fetchedAt).filter(Boolean).sort().pop() || '';
     if (stEl) stEl.textContent = last ? 'Cache ' + new Date(last).toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'}) : 'Cache ok';
     if (dot)  dot.style.background = '#48bb78';
     renderWatchlist();
@@ -2413,9 +2468,14 @@ async function fetchWatchlistPrices(forceRefresh = false) {
 
   for (let i = 0; i < toFetch.length; i++) {
     const item = toFetch[i];
-    if (stEl) stEl.textContent = `${i+1}/${toFetch.length} ${item.yahoo}…`;
-    const q = await scrapeSinglePrice(item.yahoo);
-    if (q) { cache[item.yahoo] = q; savePriceCache(cache); }
+    const label = wlKey(item);
+    if (stEl) stEl.textContent = `${i+1}/${toFetch.length} ${label}…`;
+
+    let q = null;
+    if (item.yahoo)     q = await scrapeSinglePrice(item.yahoo);
+    else if (item.isin) q = await scrapeBNPPrice(item.isin);
+
+    if (q) { cache[label] = q; savePriceCache(cache); }
     if (i < toFetch.length - 1) await new Promise(r => setTimeout(r, 500));
   }
 
@@ -2436,16 +2496,22 @@ function renderWatchlist() {
   }
 
   tbody.innerHTML = list.map(item => {
-    const q     = cache[item.yahoo];
+    const key   = wlKey(item);
+    const q     = cache[key];
     const price = q?.regularMarketPrice ?? null;
     const chg   = q?.regularMarketChange ?? null;
     const chgP  = q?.regularMarketChangePercent ?? null;
+    const isCert = !!item.isin;
 
     const priceStr = price != null ? '€' + fmt(price) : '—';
     const chgColor = chg != null ? (chg >= 0 ? '#68d391' : '#fc8181') : '';
-    const varStr = chg != null && chgP != null
-      ? `<span style="color:${chgColor}">${chg>=0?'+':''}${fmt(chg)}<br><small>${chgP>=0?'+':''}${fmt(chgP)}%</small></span>`
-      : '—';
+    // Certificates: no daily change (BNP doesn't expose it reliably), show % if available
+    let varStr = '—';
+    if (isCert && chgP != null) {
+      varStr = `<span style="color:${chgP>=0?'#68d391':'#fc8181'}">${chgP>=0?'+':''}${fmt(chgP)}%</span>`;
+    } else if (!isCert && chg != null && chgP != null) {
+      varStr = `<span style="color:${chgColor}">${chg>=0?'+':''}${fmt(chg)}<br><small>${chgP>=0?'+':''}${fmt(chgP)}%</small></span>`;
+    }
 
     let perfStr = '—';
     if (price != null && item.priceAtAdd > 0) {
@@ -2453,9 +2519,7 @@ function renderWatchlist() {
       perfStr = `<span style="color:${perf>=0?'#68d391':'#fc8181'};font-weight:700">${perf>=0?'+':''}${fmt(perf)}%</span>`;
     }
 
-    const addedDate = item.addedAt
-      ? new Date(item.addedAt).toLocaleDateString('it-IT',{day:'2-digit',month:'2-digit',year:'2-digit'})
-      : '—';
+    const addedDate  = item.addedAt ? new Date(item.addedAt).toLocaleDateString('it-IT',{day:'2-digit',month:'2-digit',year:'2-digit'}) : '—';
     const priceAddStr = item.priceAtAdd != null ? '€'+fmt(item.priceAtAdd) : '—';
 
     const fetchedStr = (() => {
@@ -2466,18 +2530,23 @@ function renderWatchlist() {
         : String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0');
     })();
 
-    const sym = item.yahoo.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+    // Display: for certs show ISIN in smaller text below ticker
+    const tickerCell = isCert
+      ? `<span style="color:#b794f4;font-weight:700;font-size:0.78rem">${item.isin}</span>`
+      : `<strong>${item.yahoo}</strong>`;
+
+    const safeKey = key.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
     return `<tr>
-      <td><strong>${item.yahoo}</strong></td>
+      <td>${tickerCell}</td>
       <td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${item.name||''}">${item.name||'—'}</td>
-      <td style="font-size:0.75rem;color:#a0aec0">${item.type||'—'}</td>
+      <td style="font-size:0.75rem;color:${isCert?'#b794f4':'#a0aec0'}">${item.type||'—'}</td>
       <td style="text-align:right;font-weight:700">${priceStr}</td>
       <td style="text-align:right;font-size:0.82rem;line-height:1.4">${varStr}</td>
       <td style="text-align:right">${perfStr}</td>
       <td style="text-align:right;color:#718096;font-size:0.78rem">${priceAddStr}</td>
       <td style="text-align:right;color:#718096;font-size:0.78rem">${addedDate}</td>
       <td style="text-align:right;color:#4a5568;font-size:0.73rem">${fetchedStr}</td>
-      <td style="text-align:right"><button class="wl-remove-btn" onclick="removeFromWatchlist('${sym}')">✕</button></td>
+      <td style="text-align:right"><button class="wl-remove-btn" onclick="removeFromWatchlist('${safeKey}')">✕</button></td>
     </tr>`;
   }).join('');
 }
