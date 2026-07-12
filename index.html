@@ -730,11 +730,13 @@ a.ticker-badge:hover{background:#2b6cb0;color:#fff}
             <th style="text-align:right">Da investire</th>
             <th style="text-align:right">Quote</th>
             <th style="text-align:right">Importo eff.</th>
+            <th style="text-align:right" title="Dividendo/provento atteso per quota">Div./quota</th>
+            <th style="text-align:right;color:#f6ad55" title="(Q.tà attuale + nuove quote) × dividendo previsto">Reddito prev.</th>
             <th></th>
           </tr>
         </thead>
         <tbody id="calcTableBody">
-          <tr><td colspan="9" style="text-align:center;color:#4a5568;padding:24px">Aggiungi strumenti dal portafoglio per pianificare gli acquisti.</td></tr>
+          <tr><td colspan="11" style="text-align:center;color:#4a5568;padding:24px">Aggiungi strumenti dal portafoglio per pianificare gli acquisti.</td></tr>
         </tbody>
         <tfoot id="calcTableFoot"></tfoot>
       </table>
@@ -3039,7 +3041,7 @@ function renderCalcPicker() {
 
 function addCalcItem(ticker) {
   if (calcItems.find(x => x.ticker === ticker)) return;
-  calcItems.push({ ticker, amount: '' });
+  calcItems.push({ ticker, amount: '', dividend: '' });
   saveCalcState();
   renderCalcPicker();
   renderCalcTable();
@@ -3054,22 +3056,29 @@ function removeCalcItem(ticker) {
   updateCalcSummary();
 }
 
+function calcIncome(pos, quotes, dividendStr) {
+  const div = parseFloat(String(dividendStr).replace(',','.')) || 0;
+  if (!div || !pos) return null;
+  return (pos.shares + (quotes || 0)) * div;
+}
+
 function onCalcAmountChange(ticker, val) {
   const item = calcItems.find(x => x.ticker === ticker);
   if (!item) return;
   item.amount = val;
   saveCalcState();
-  // Update only the derived cells — do NOT re-render entire table (would lose focus)
   const pos = (G.positions||[]).find(p => p.ticker === ticker);
   if (!pos) return;
-  const price = getCalcPrice(pos);
+  const price  = getCalcPrice(pos);
   const amount = parseFloat(String(val).replace(',','.')) || 0;
   const quotes = price != null && amount > 0 ? Math.floor(amount / price) : null;
   const effective = quotes != null && price ? quotes * price : null;
+  const income = calcIncome(pos, quotes || 0, item.dividend);
   const qEl = document.getElementById('cq-' + ticker);
   const eEl = document.getElementById('ce-' + ticker);
+  const rEl = document.getElementById('cr-' + ticker);
   if (qEl) {
-    if (quotes == null)   qEl.innerHTML = '—';
+    if (quotes == null)    qEl.innerHTML = '—';
     else if (quotes === 0) qEl.innerHTML = '<span style="color:#fc8181">0</span>';
     else                   qEl.innerHTML = `<strong>${quotes}</strong>`;
   }
@@ -3077,6 +3086,23 @@ function onCalcAmountChange(ticker, val) {
     if (!effective || effective === 0) eEl.innerHTML = '<span style="color:#4a5568">—</span>';
     else                               eEl.innerHTML = `€${fmt(effective)}`;
   }
+  if (rEl) rEl.innerHTML = income != null ? `<span style="color:#f6ad55">€${fmt(income)}</span>` : '<span style="color:#4a5568">—</span>';
+  updateCalcSummary();
+}
+
+function onCalcDivChange(ticker, val) {
+  const item = calcItems.find(x => x.ticker === ticker);
+  if (!item) return;
+  item.dividend = val;
+  saveCalcState();
+  const pos = (G.positions||[]).find(p => p.ticker === ticker);
+  if (!pos) return;
+  const price  = getCalcPrice(pos);
+  const amount = parseFloat(String(item.amount).replace(',','.')) || 0;
+  const quotes = price != null && amount > 0 ? Math.floor(amount / price) : null;
+  const income = calcIncome(pos, quotes || 0, val);
+  const rEl = document.getElementById('cr-' + ticker);
+  if (rEl) rEl.innerHTML = income != null ? `<span style="color:#f6ad55">€${fmt(income)}</span>` : '<span style="color:#4a5568">—</span>';
   updateCalcSummary();
 }
 
@@ -3085,41 +3111,51 @@ function renderCalcTable() {
   const tbody = document.getElementById('calcTableBody');
   if (!tbody) return;
   if (!calcItems.length) {
-    tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;color:#4a5568;padding:24px">Aggiungi strumenti dal portafoglio per pianificare gli acquisti.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="11" style="text-align:center;color:#4a5568;padding:24px">Aggiungi strumenti dal portafoglio per pianificare gli acquisti.</td></tr>`;
     return;
   }
   const positions = G.positions || [];
   const C = {blue:'#63b3ed', green:'#68d391', purple:'#b794f4'};
+  const inputStyle = 'background:#0f1117;border:1px solid #2d3748;border-radius:5px;color:#e2e8f0;padding:4px 7px;font-size:.82rem;text-align:right;outline:none';
   tbody.innerHTML = calcItems.map(item => {
     const pos = positions.find(p => p.ticker === item.ticker);
     if (!pos) return '';
-    const price = getCalcPrice(pos);
-    const amount = parseFloat(String(item.amount).replace(',','.')) || 0;
-    const quotes = price != null && amount > 0 ? Math.floor(amount / price) : null;
+    const price     = getCalcPrice(pos);
+    const amount    = parseFloat(String(item.amount).replace(',','.')) || 0;
+    const quotes    = price != null && amount > 0 ? Math.floor(amount / price) : null;
     const effective = quotes != null && price ? quotes * price : null;
-    const tc = pos.type==='Azione'?C.blue:pos.type==='ETF'?C.green:C.purple;
+    const income    = calcIncome(pos, quotes || 0, item.dividend);
+    const tc    = pos.type==='Azione'?C.blue:pos.type==='ETF'?C.green:C.purple;
     const priceStr = price != null ? `€${fmt(price)}` : '<span style="color:#4a5568">—</span>';
     const qHtml = quotes == null ? '—' : quotes === 0 ? '<span style="color:#fc8181">0</span>' : `<strong>${quotes}</strong>`;
     const eHtml = (!effective || effective===0) ? '<span style="color:#4a5568">—</span>' : `€${fmt(effective)}`;
+    const rHtml = income != null ? `<span style="color:#f6ad55">€${fmt(income)}</span>` : '<span style="color:#4a5568">—</span>';
     const safe = pos.ticker.replace(/'/g,"\\'");
     return `<tr>
       <td style="white-space:nowrap"><span class="ticker-badge">${pos.ticker}</span></td>
-      <td style="font-size:.78rem;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${(pos.desc||pos.ticker).replace(/"/g,'&quot;')}">${pos.desc||pos.ticker}</td>
+      <td style="font-size:.78rem;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${(pos.desc||pos.ticker).replace(/"/g,'&quot;')}">${pos.desc||pos.ticker}</td>
       <td style="font-size:.72rem;color:${tc}">${pos.type}</td>
       <td style="text-align:right">${fmt(pos.shares,0)}</td>
       <td style="text-align:right">${priceStr}</td>
       <td style="text-align:right">
         <div style="display:flex;align-items:center;gap:4px;justify-content:flex-end">
           <span style="color:#4a5568;font-size:.72rem">€</span>
-          <input type="number" value="${item.amount}" min="0" step="1"
-            style="width:88px;background:#0f1117;border:1px solid #2d3748;border-radius:5px;color:#e2e8f0;padding:4px 7px;font-size:.82rem;text-align:right;outline:none"
+          <input type="number" value="${item.amount}" min="0" step="1" style="width:82px;${inputStyle}"
             oninput="onCalcAmountChange('${safe}',this.value)"
-            onfocus="this.style.borderColor='#4299e1'"
-            onblur="this.style.borderColor='#2d3748'">
+            onfocus="this.style.borderColor='#4299e1'" onblur="this.style.borderColor='#2d3748'">
         </div>
       </td>
       <td style="text-align:right" id="cq-${pos.ticker}">${qHtml}</td>
       <td style="text-align:right;color:#a0aec0" id="ce-${pos.ticker}">${eHtml}</td>
+      <td style="text-align:right">
+        <div style="display:flex;align-items:center;gap:4px;justify-content:flex-end">
+          <span style="color:#4a5568;font-size:.72rem">€</span>
+          <input type="number" value="${item.dividend}" min="0" step="0.01" style="width:72px;${inputStyle}"
+            oninput="onCalcDivChange('${safe}',this.value)"
+            onfocus="this.style.borderColor='#f6ad55'" onblur="this.style.borderColor='#2d3748'">
+        </div>
+      </td>
+      <td style="text-align:right" id="cr-${pos.ticker}">${rHtml}</td>
       <td style="text-align:center">
         <button onclick="removeCalcItem('${safe}')"
           style="background:none;border:1px solid #4a5568;color:#718096;border-radius:4px;padding:2px 7px;font-size:.7rem;cursor:pointer"
@@ -3138,20 +3174,31 @@ function updateCalcSummary() {
   const liq = getCalcLiquidity();
   const totalAvail = newFunds + liq;
 
-  // Update "Totale disponibile" display
   const availEl = document.getElementById('calcTotalAvail');
   if (availEl) availEl.textContent = totalAvail > 0 ? `€${fmt(totalAvail)}` : '—';
 
   const positions = G.positions || [];
-  let totalEffective = 0;
+  let totalEffective = 0, totalIncome = 0, hasIncome = false;
   for (const item of calcItems) {
     const pos = positions.find(p => p.ticker === item.ticker);
     if (!pos) continue;
-    const price = getCalcPrice(pos);
+    const price  = getCalcPrice(pos);
     const amount = parseFloat(String(item.amount).replace(',','.')) || 0;
     const quotes = price != null && amount > 0 ? Math.floor(amount / price) : 0;
     totalEffective += quotes > 0 && price ? quotes * price : 0;
+    const income = calcIncome(pos, quotes, item.dividend);
+    if (income != null) { totalIncome += income; hasIncome = true; }
   }
+
+  // Update tfoot
+  const ft = document.getElementById('calcTableFoot');
+  if (ft) {
+    ft.innerHTML = hasIncome ? `<tr style="border-top:1px solid #2d3748">
+      <td colspan="9" style="font-size:.75rem;color:#718096;padding-top:6px;text-align:right">Reddito previsto totale:</td>
+      <td style="color:#f6ad55;font-weight:700;padding-top:6px;text-align:right">€${fmt(totalIncome)}</td>
+      <td></td></tr>` : '';
+  }
+
   if (!calcItems.length) { summaryEl.innerHTML = ''; return; }
   const remaining = totalAvail > 0 ? totalAvail - totalEffective : null;
   const over = remaining != null && remaining < -0.005;
@@ -3160,14 +3207,15 @@ function updateCalcSummary() {
            `<span style="color:#68d391">€${fmt(remaining)}</span>`;
   const statusHtml = over
     ? `<span style="color:#fc8181;font-size:.75rem;font-weight:700">⚠ Sfori il budget di €${fmt(Math.abs(remaining))}</span>`
-    : (totalEffective > 0
-        ? `<span style="color:#68d391;font-size:.75rem">✓ Nei limiti del budget</span>`
-        : '');
+    : (totalEffective > 0 ? `<span style="color:#68d391;font-size:.75rem">✓ Nei limiti del budget</span>` : '');
+  const incomeHtml = hasIncome
+    ? `<div style="font-size:.82rem;color:#a0aec0">Reddito previsto: <strong style="color:#f6ad55">€${fmt(totalIncome)}</strong></div>` : '';
   summaryEl.innerHTML = `
     <div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap;padding:12px 0;border-top:1px solid #2d3748;margin-top:8px">
       <div style="font-size:.82rem;color:#a0aec0">Totale da spendere: <strong style="color:#e2e8f0">€${fmt(totalEffective)}</strong></div>
       ${remaining != null ? `<div style="font-size:.82rem;color:#a0aec0">Budget rimasto: <strong>${remHtml}</strong></div>` : ''}
       ${statusHtml}
+      ${incomeHtml}
     </div>`;
 }
 
