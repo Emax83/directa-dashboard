@@ -535,6 +535,7 @@ a.ticker-badge:hover{background:#2b6cb0;color:#fff}
             <th style="text-align:right">Q.tà</th>
             <th style="text-align:right">Prezzo Medio</th>
             <th style="text-align:right">Prezzo Live</th>
+            <th style="text-align:right">Investito</th>
             <th style="text-align:right">Valore (€)</th>
             <th style="text-align:right">Peso %</th>
             <th style="text-align:right">P&amp;L (€)</th>
@@ -546,7 +547,7 @@ a.ticker-badge:hover{background:#2b6cb0;color:#fff}
           </tr>
         </thead>
         <tbody id="liveTable">
-          <tr class="loading-row"><td colspan="14">Carica il CSV per vedere le posizioni</td></tr>
+          <tr class="loading-row"><td colspan="15">Carica il CSV per vedere le posizioni</td></tr>
         </tbody>
       </table>
     </div>
@@ -1724,7 +1725,7 @@ function patchRowPrice(ticker, q) {
   const tr = document.querySelector(`#liveTable tr[data-ticker="${CSS.escape(ticker)}"]`);
   if (!tr) return;
   const cells = tr.querySelectorAll('td');
-  if (cells.length < 14) return;
+  if (cells.length < 15) return;
 
   const pos = (G.positions || []).find(p => p.ticker === ticker);
   if (!pos) return;
@@ -1745,27 +1746,29 @@ function patchRowPrice(ticker, q) {
         : `<strong>€${fmt(lp,4)}</strong><br><span style="font-size:.68rem;color:${ch>=0?'#48bb78':'#fc8181'}">${ch>=0?'+':''}${fmt(ch,3)} (${fmt(cp,2)}%)</span>`)
     : '<span class="cert-tag">N/D</span>';
 
-  // col 6 — Valore
-  cells[6].innerHTML = mv != null
+  // col 6 — Investito (static — no update needed)
+
+  // col 7 — Valore
+  cells[7].innerHTML = mv != null
     ? `€${fmt(mv)}`
     : `<span style="color:#4a5568">€${fmt(pos.totalCost)}</span>`;
 
-  // col 8 — P&L €
-  cells[8].innerHTML = pl != null
+  // col 9 — P&L €
+  cells[9].innerHTML = pl != null
     ? `<span class="${pl>=0?'green':'red'}">${pl>=0?'+':'-'}€${fmt(Math.abs(pl))}</span>`
     : '<span style="color:#4a5568">—</span>';
 
-  // col 9 — P&L %
-  cells[9].innerHTML = pp != null
+  // col 10 — P&L %
+  cells[10].innerHTML = pp != null
     ? `<span class="${pp>=0?'green':'red'}">${pp>=0?'+':''}${fmt(pp)}%</span>`
     : '<span style="color:#4a5568">—</span>';
 
-  // col 12 — Barra
-  cells[12].innerHTML = `<div class="gain-bar"><div class="bar-bg"><div class="bar-fill" style="width:${pp!=null?Math.min(Math.abs(pp),100):0}%;background:${bc}"></div></div><span style="font-size:.68rem;color:${bc}">${pp!=null?(pp>=0?'+':'')+fmt(pp,1)+'%':'—'}</span></div>`;
+  // col 13 — Barra
+  cells[13].innerHTML = `<div class="gain-bar"><div class="bar-bg"><div class="bar-fill" style="width:${pp!=null?Math.min(Math.abs(pp),100):0}%;background:${bc}"></div></div><span style="font-size:.68rem;color:${bc}">${pp!=null?(pp>=0?'+':'')+fmt(pp,1)+'%':'—'}</span></div>`;
 
-  // col 13 — Data Prezzo
-  cells[13].textContent = priceDate;
-  cells[13].style.color = '#718096';
+  // col 14 — Data Prezzo
+  cells[14].textContent = priceDate;
+  cells[14].style.color = '#718096';
 }
 
 async function fetchPrices(forceRefresh = false) {
@@ -1907,6 +1910,7 @@ function renderTable(pm) {
             ? `<strong>€${fmt(lp,4)}</strong><br><span style="font-size:.68rem;color:${cp>=0?'#48bb78':'#fc8181'}">${cp!=null?(cp>=0?'+':'')+fmt(cp,2)+'%':''} <span style="color:#4a5568">mid</span></span>`
             : `<strong>€${fmt(lp,4)}</strong><br><span style="font-size:.68rem;color:${ch>=0?'#48bb78':'#fc8181'}">${ch>=0?'+':''}${fmt(ch,3)} (${fmt(cp,2)}%)</span>`)
         : '<span class="cert-tag">N/D</span>'}</td>
+      <td style="text-align:right;color:#a0aec0">€${fmt(pos.totalCost)}</td>
       <td style="text-align:right">${mv!=null?`€${fmt(mv)}`:`<span style="color:#4a5568">€${fmt(pos.totalCost)}</span>`}</td>
       <td style="text-align:right">${weight!=null
         ? `<span style="color:#b794f4;font-size:.8rem">${fmt(weight,1)}%</span><div style="margin-top:2px;height:3px;border-radius:2px;background:#2d3748;width:54px"><div style="height:3px;border-radius:2px;background:#b794f4;width:${Math.min(weight,100)}%"></div></div>`
@@ -1923,8 +1927,9 @@ function renderTable(pm) {
   // ── Totale posizioni aperte ──
   const tpl=totalMkt-totalCost, tpp=totalCost>0?(tpl/totalCost)*100:0;
   rows += `<tr class="total-row">
-    <td colspan="3"><strong>TOTALE APERTE</strong></td><td></td>
-    <td style="text-align:right"><strong>€${fmt(totalCost)}</strong></td><td></td>
+    <td colspan="3"><strong>TOTALE APERTE</strong></td><td></td><td></td>
+    <td></td>
+    <td style="text-align:right"><strong>€${fmt(totalCost)}</strong></td>
     <td style="text-align:right"><strong class="teal">€${fmt(totalMkt)}</strong></td>
     <td style="text-align:right;color:#f6e05e;font-size:.75rem;font-weight:700">100%</td>
     <td style="text-align:right"><span class="${tpl>=0?'green':'red'}">${tpl>=0?'+':'-'}€${fmt(Math.abs(tpl))}</span></td>
@@ -1934,7 +1939,7 @@ function renderTable(pm) {
 
   // ── Separator ──
   if (closed.length) {
-    rows += `<tr><td colspan="14" style="padding:6px 9px;font-size:0.7rem;color:#4a5568;background:#0f1117;letter-spacing:.05em;text-transform:uppercase">
+    rows += `<tr><td colspan="15" style="padding:6px 9px;font-size:0.7rem;color:#4a5568;background:#0f1117;letter-spacing:.05em;text-transform:uppercase">
       — Posizioni chiuse (${closed.length}) —
     </td></tr>`;
   }
@@ -1955,6 +1960,7 @@ function renderTable(pm) {
       <td style="text-align:right">${fmt(c.boughtQty,0)}</td>
       <td style="text-align:right">€${fmt(c.avgBuyPrice,4)}</td>
       <td style="text-align:right">€${fmt(c.avgSellPrice,4)}<br><span style="font-size:.65rem">venduta</span></td>
+      <td style="text-align:right;color:#4a5568">—</td>
       <td style="text-align:right">—</td>
       <td style="text-align:right">—</td>
       <td style="text-align:right"><span style="color:${plColor}">${c.realizedPL>=0?'+':'-'}€${fmt(Math.abs(c.realizedPL))}</span></td>
