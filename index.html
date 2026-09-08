@@ -739,7 +739,7 @@ a.ticker-badge:hover{background:#2b6cb0;color:#fff}
             <th style="text-align:right">Da investire</th>
             <th style="text-align:right">Quote</th>
             <th style="text-align:right">Importo eff.</th>
-            <th style="text-align:right" title="Investito attuale + importo inserito manualmente">Investito totale</th>
+            <th style="text-align:right" title="Investito attuale + importo effettivo (quote × prezzo)">Investito totale</th>
             <th style="text-align:right" title="Dividendo/provento atteso per quota">Div./quota</th>
             <th style="text-align:right;color:#f6ad55" title="(Q.tà attuale + nuove quote) × dividendo previsto">Reddito prev.</th>
             <th></th>
@@ -3102,7 +3102,7 @@ function onCalcAmountChange(ticker, val) {
     if (!effective || effective === 0) eEl.innerHTML = '<span style="color:#4a5568">—</span>';
     else                               eEl.innerHTML = `€${fmt(effective)}`;
   }
-  if (ctEl) ctEl.innerHTML = `€${fmt((pos.totalCost || 0) + amount)}`;
+  if (ctEl) ctEl.innerHTML = `€${fmt((pos.totalCost || 0) + (effective || 0))}`;
   if (rEl) rEl.innerHTML = income != null ? `<span style="color:#f6ad55">€${fmt(income)}</span>` : '<span style="color:#4a5568">—</span>';
   updateCalcSummary();
 }
@@ -3145,7 +3145,7 @@ function renderCalcTable() {
     const tc    = pos.type==='Azione'?C.blue:pos.type==='ETF'?C.green:C.purple;
     const priceStr = price != null ? `€${fmt(price)}` : '<span style="color:#4a5568">—</span>';
     const invested  = pos.totalCost || 0;
-    const investedTotal = invested + amount;
+    const investedTotal = invested + (effective || 0);
     const qHtml = quotes == null ? '—' : quotes === 0 ? '<span style="color:#fc8181">0</span>' : `<strong>${quotes}</strong>`;
     const eHtml = (!effective || effective===0) ? '<span style="color:#4a5568">—</span>' : `€${fmt(effective)}`;
     const rHtml = income != null ? `<span style="color:#f6ad55">€${fmt(income)}</span>` : '<span style="color:#4a5568">—</span>';
