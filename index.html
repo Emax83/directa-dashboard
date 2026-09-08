@@ -735,16 +735,18 @@ a.ticker-badge:hover{background:#2b6cb0;color:#fff}
             <th>Tipo</th>
             <th style="text-align:right">Q.tà att.</th>
             <th style="text-align:right">Prezzo Live</th>
+            <th style="text-align:right" title="Importo attualmente investito in questo strumento">Investito attuale</th>
             <th style="text-align:right">Da investire</th>
             <th style="text-align:right">Quote</th>
             <th style="text-align:right">Importo eff.</th>
+            <th style="text-align:right" title="Investito attuale + importo inserito manualmente">Investito totale</th>
             <th style="text-align:right" title="Dividendo/provento atteso per quota">Div./quota</th>
             <th style="text-align:right;color:#f6ad55" title="(Q.tà attuale + nuove quote) × dividendo previsto">Reddito prev.</th>
             <th></th>
           </tr>
         </thead>
         <tbody id="calcTableBody">
-          <tr><td colspan="11" style="text-align:center;color:#4a5568;padding:24px">Aggiungi strumenti dal portafoglio per pianificare gli acquisti.</td></tr>
+          <tr><td colspan="13" style="text-align:center;color:#4a5568;padding:24px">Aggiungi strumenti dal portafoglio per pianificare gli acquisti.</td></tr>
         </tbody>
         <tfoot id="calcTableFoot"></tfoot>
       </table>
@@ -3089,6 +3091,7 @@ function onCalcAmountChange(ticker, val) {
   const income = calcIncome(pos, quotes || 0, item.dividend);
   const qEl = document.getElementById('cq-' + ticker);
   const eEl = document.getElementById('ce-' + ticker);
+  const ctEl = document.getElementById('ct-' + ticker);
   const rEl = document.getElementById('cr-' + ticker);
   if (qEl) {
     if (quotes == null)    qEl.innerHTML = '—';
@@ -3099,6 +3102,7 @@ function onCalcAmountChange(ticker, val) {
     if (!effective || effective === 0) eEl.innerHTML = '<span style="color:#4a5568">—</span>';
     else                               eEl.innerHTML = `€${fmt(effective)}`;
   }
+  if (ctEl) ctEl.innerHTML = `€${fmt((pos.totalCost || 0) + amount)}`;
   if (rEl) rEl.innerHTML = income != null ? `<span style="color:#f6ad55">€${fmt(income)}</span>` : '<span style="color:#4a5568">—</span>';
   updateCalcSummary();
 }
@@ -3124,7 +3128,7 @@ function renderCalcTable() {
   const tbody = document.getElementById('calcTableBody');
   if (!tbody) return;
   if (!calcItems.length) {
-    tbody.innerHTML = `<tr><td colspan="11" style="text-align:center;color:#4a5568;padding:24px">Aggiungi strumenti dal portafoglio per pianificare gli acquisti.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="13" style="text-align:center;color:#4a5568;padding:24px">Aggiungi strumenti dal portafoglio per pianificare gli acquisti.</td></tr>`;
     return;
   }
   const positions = G.positions || [];
@@ -3140,6 +3144,8 @@ function renderCalcTable() {
     const income    = calcIncome(pos, quotes || 0, item.dividend);
     const tc    = pos.type==='Azione'?C.blue:pos.type==='ETF'?C.green:C.purple;
     const priceStr = price != null ? `€${fmt(price)}` : '<span style="color:#4a5568">—</span>';
+    const invested  = pos.totalCost || 0;
+    const investedTotal = invested + amount;
     const qHtml = quotes == null ? '—' : quotes === 0 ? '<span style="color:#fc8181">0</span>' : `<strong>${quotes}</strong>`;
     const eHtml = (!effective || effective===0) ? '<span style="color:#4a5568">—</span>' : `€${fmt(effective)}`;
     const rHtml = income != null ? `<span style="color:#f6ad55">€${fmt(income)}</span>` : '<span style="color:#4a5568">—</span>';
@@ -3150,6 +3156,7 @@ function renderCalcTable() {
       <td style="font-size:.72rem;color:${tc}">${pos.type}</td>
       <td style="text-align:right">${fmt(pos.shares,0)}</td>
       <td style="text-align:right">${priceStr}</td>
+      <td style="text-align:right;color:#a0aec0">€${fmt(invested)}</td>
       <td style="text-align:right">
         <div style="display:flex;align-items:center;gap:4px;justify-content:flex-end">
           <span style="color:#4a5568;font-size:.72rem">€</span>
@@ -3160,6 +3167,7 @@ function renderCalcTable() {
       </td>
       <td style="text-align:right" id="cq-${pos.ticker}">${qHtml}</td>
       <td style="text-align:right;color:#a0aec0" id="ce-${pos.ticker}">${eHtml}</td>
+      <td style="text-align:right;font-weight:600" id="ct-${pos.ticker}">€${fmt(investedTotal)}</td>
       <td style="text-align:right">
         <div style="display:flex;align-items:center;gap:4px;justify-content:flex-end">
           <span style="color:#4a5568;font-size:.72rem">€</span>
@@ -3207,7 +3215,7 @@ function updateCalcSummary() {
   const ft = document.getElementById('calcTableFoot');
   if (ft) {
     ft.innerHTML = hasIncome ? `<tr style="border-top:1px solid #2d3748">
-      <td colspan="9" style="font-size:.75rem;color:#718096;padding-top:6px;text-align:right">Reddito previsto totale:</td>
+      <td colspan="11" style="font-size:.75rem;color:#718096;padding-top:6px;text-align:right">Reddito previsto totale:</td>
       <td style="color:#f6ad55;font-weight:700;padding-top:6px;text-align:right">€${fmt(totalIncome)}</td>
       <td></td></tr>` : '';
   }
