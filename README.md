@@ -41,7 +41,7 @@ Apri `dashboard.html` nel browser, trascina il CSV esportato da Directa e il das
 
 ## Deployment
 
-Il file è self-contained (dipendenza esterna: Chart.js 4.4.1 da cdnjs). Funziona:
+Il file è self-contained (Chart.js 4.4.1 incluso in `vendor/`, nessuna CDN). Funziona:
 
 - In locale (apri direttamente il file nel browser)
 - Su **GitHub Pages** — pubblica il repository e abilita Pages su `main / root`
