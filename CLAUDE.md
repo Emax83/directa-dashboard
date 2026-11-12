@@ -138,6 +138,16 @@ CORS proxy (in ordine di tentativo):
 
 Il proxy Vercel (`api/proxy.js`) accetta URL Yahoo Finance e `investimenti.bnpparibas.it`.
 
+### Sicurezza del proxy (non allentare senza motivo)
+Il proxy è chiamato dal browser, quindi non può contenere segreti. Le protezioni sono:
+- **Solo GET**, solo `https`, host esatti (`ALLOWED_HOSTS`), nessuna userinfo/porta custom (parsing con `new URL`, non `startsWith`).
+- **Origin fissa**: accetta solo richieste dirette a `directa-dashboard.vercel.app` con `Sec-Fetch-Site: same-origin` e, se presenti, `Origin`/`Referer` coincidenti. Senza segnali del browser → 403. Un GET same-origin spesso non invia `Origin`: non basarsi solo su quello.
+- Override per sviluppo locale/preview: variabile d'ambiente `ALLOWED_ORIGIN` (lista separata da virgole). Senza, i deploy preview vengono rifiutati.
+- **Nessun** header `Access-Control-Allow-Origin`: non riaggiungere `*`.
+- Redirect seguiti a mano (max 3) e solo verso host consentiti; risposta max 2 MB; errori generici.
+- Limite noto: un client non-browser può falsificare gli header. L'argine è la regola di **rate limit** nel Firewall Vercel (`/api/proxy`, 100 richieste/min per IP), da creare dal pannello (l'API MCP dava 404). Se serve autenticazione reale: chiave in `localStorage` inviata come `x-api-key`, confrontata con una env var Vercel (non implementata).
+- Il file `vendor/chart.umd.min.js` è Chart.js 4.4.1 locale: non reintrodurre script da CDN (leggerebbero `localStorage`).
+
 ### Prezzi certificati BNP Paribas
 URL: `https://investimenti.bnpparibas.it/product-details/{ISIN}/`
 Funzione: `scrapeBNPPrice(isin)` — estrae bid e ask, calcola mid.
