@@ -4,7 +4,7 @@ Dashboard finanziario single-file per conto Directa SIM 75769.
 
 ## File principale
 
-`E:\DOCUMENTI\Claude\Projects\DIRECTA\index.html` — tutto inline (HTML + CSS + JS), nessun backend, nessuna dipendenza esterna tranne Chart.js 4.4.1 da cdnjs CDN.
+`E:\DOCUMENTI\Claude\Projects\DIRECTA\index.html` — tutto inline (HTML + CSS + JS), nessun backend, unica dipendenza Chart.js 4.4.1, servita in locale da `vendor/chart.umd.min.js` (nessuna CDN).
 
 ---
 
