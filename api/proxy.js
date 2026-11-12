@@ -2,10 +2,10 @@
 // Allowed: Yahoo Finance + BNP Paribas Investimenti
 // Usage: /api/proxy?url=https%3A%2F%2Ffinance.yahoo.com%2Fquote%2FBAMI.MI%2F
 //
-// Protezione: accetta solo richieste same-origin (la dashboard servita dallo
-// stesso dominio). Non è autenticazione: un client non-browser può falsificare
-// gli header. Per un limite reale aggiungere una regola di rate limit nel
-// Firewall di Vercel su /api/proxy.
+// Protezione: accetta solo richieste che il browser dichiara same-origin e
+// indirizzate al dominio fisso della dashboard (ALLOWED_ORIGINS). Non è
+// autenticazione: un client non-browser può falsificare gli header. Per un
+// limite reale aggiungere una regola di rate limit nel Firewall di Vercel.
 
 const ALLOWED_HOSTS = new Set([
   'finance.yahoo.com',
@@ -16,15 +16,28 @@ const ALLOWED_HOSTS = new Set([
 
 const MAX_BYTES = 2 * 1024 * 1024; // 2 MB
 
-function isSameOrigin(req) {
-  const site = req.headers['sec-fetch-site'];
-  if (site) return site === 'same-origin';
-  // Browser senza Fetch Metadata: confronta Origin con Host.
-  const origin = req.headers.origin;
-  const host = req.headers.host;
-  if (!origin || !host) return false;
-  try { return new URL(origin).host === host; }
-  catch (e) { return false; }
+// Unica origin autorizzata (dominio di produzione). Override opzionale per lo
+// sviluppo locale: variabile d'ambiente ALLOWED_ORIGIN (lista separata da virgole).
+const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGIN || 'https://directa-dashboard.vercel.app')
+  .split(',').map(s => s.trim()).filter(Boolean);
+
+function originOf(value) {
+  try { return new URL(value).origin; } catch (e) { return null; }
+}
+
+function isAllowedOrigin(req) {
+  const h = req.headers;
+  // 1) Il browser deve dichiarare che la richiesta parte dalla stessa origin.
+  if (h['sec-fetch-site'] && h['sec-fetch-site'] !== 'same-origin') return false;
+  // 2) La richiesta deve essere indirizzata al dominio fisso.
+  const host = ALLOWED_ORIGINS.map(o => originOf(o)?.replace(/^https?:\/\//, ''));
+  if (!host.includes(h.host)) return false;
+  // 3) Se il browser invia Origin o Referer (un GET same-origin spesso invia
+  //    solo Referer), devono coincidere con l'origin fissa.
+  const declared = h.origin ? originOf(h.origin) : (h.referer ? originOf(h.referer) : null);
+  if (declared && !ALLOWED_ORIGINS.includes(declared)) return false;
+  // Senza nessuno dei tre segnali del browser (es. curl) rifiuta.
+  return Boolean(h['sec-fetch-site'] || declared);
 }
 
 function parseAllowed(raw) {
@@ -40,7 +53,7 @@ export default async function handler(req, res) {
   res.setHeader('Vary', 'Origin, Sec-Fetch-Site');
 
   if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
-  if (!isSameOrigin(req)) return res.status(403).json({ error: 'Forbidden' });
+  if (!isAllowedOrigin(req)) return res.status(403).json({ error: 'Forbidden' });
 
   const { url } = req.query;
   if (!url || typeof url !== 'string') return res.status(400).json({ error: 'Missing url parameter' });
